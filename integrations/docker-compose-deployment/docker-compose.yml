@@ -1,0 +1,81 @@
+services:
+  db:
+    image: ankane/pgvector:v0.5.1
+    container_name: open-brain-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: openbrain
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — copy .env.example to .env and fill it in}
+      POSTGRES_DB: openbrain
+    ports:
+      # LAN-visible so other machines on the home network can connect with psql.
+      # Change to "127.0.0.1:5432:5432" to restrict to localhost on the host.
+      - "0.0.0.0:5432:5432"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      - open-brain
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: open-brain-ollama
+    restart: unless-stopped
+    environment:
+      # -1 pins loaded models in RAM permanently so the first call of the day
+      # doesn't pay the ~2GB load-from-disk cost. 32GB host, ~3GB of resident
+      # model weights, easy tradeoff. Change to e.g. "30m" to unload after
+      # inactivity if RAM is tighter on another host.
+      OLLAMA_KEEP_ALIVE: "-1"
+      # Single request lane — this Ollama is only called by the MCP server,
+      # which serializes its own captures. No benefit to multiplexing.
+      OLLAMA_NUM_PARALLEL: "1"
+      # Uncomment to experiment with the Vulkan backend for AMD iGPUs.
+      # Requires a derived image with mesa-vulkan-drivers + libvulkan1 and
+      # passing /dev/dri into the container. See README "GPU acceleration".
+      # OLLAMA_VULKAN: "1"
+    volumes:
+      - ./data/ollama:/root/.ollama
+    # Deliberately no host port published. The MCP server reaches Ollama over
+    # the internal open-brain network at http://ollama:11434.
+    networks:
+      - open-brain
+
+  mcp-server:
+    build: .
+    container_name: open-brain-mcp
+    restart: unless-stopped
+    environment:
+      # Database connection — reaches the db service over the internal network.
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: openbrain
+      DB_USER: openbrain
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — copy .env.example to .env and fill it in}
+
+      # MCP auth — any request missing or mismatching this header returns 401.
+      MCP_ACCESS_KEY: ${MCP_ACCESS_KEY:?MCP_ACCESS_KEY is required — generate a random 32+ char secret}
+
+      # Embeddings via local Ollama (OpenAI-compatible endpoint at /v1).
+      EMBEDDING_API_BASE: http://ollama:11434/v1
+      EMBEDDING_API_KEY: ollama-local-no-auth
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-mxbai-embed-large}
+
+      # Chat / metadata extraction via the same local Ollama, different model.
+      CHAT_API_BASE: http://ollama:11434/v1
+      CHAT_API_KEY: ollama-local-no-auth
+      CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:3b}
+    ports:
+      # LAN + tailnet visible so Claude Desktop / Claude Code on other
+      # machines can reach the MCP endpoint. Authenticated via x-brain-key
+      # header checked against MCP_ACCESS_KEY.
+      - "0.0.0.0:8000:8000"
+    depends_on:
+      - db
+      - ollama
+    networks:
+      - open-brain
+
+networks:
+  open-brain:
+    driver: bridge

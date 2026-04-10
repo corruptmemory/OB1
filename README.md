@@ -123,6 +123,7 @@ MCP server extensions, alternative deployment targets, and capture sources beyon
 | Integration | What It Does | Contributor |
 | ----------- | ------------ | ----------- |
 | [Kubernetes Deployment](integrations/kubernetes-deployment/) | Fully self-hosted K8s deployment with PostgreSQL + pgvector — no Supabase required | [@velo](https://github.com/velo) |
+| [Docker Compose Deployment](integrations/docker-compose-deployment/) | Single-host self-hosted deployment with local Ollama for embeddings and metadata — no Supabase, no OpenRouter, no cloud dependencies | [@corruptmemory](https://github.com/corruptmemory) |
 | [Slack Capture](integrations/slack-capture/) | Quick-capture thoughts via Slack messages with auto-embedding and classification | Core |
 | [Discord Capture](integrations/discord-capture/) | Discord bot that captures messages into Open Brain, mirroring the Slack pattern | Core |
 

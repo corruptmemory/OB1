@@ -1,0 +1,30 @@
+{
+  "name": "Docker Compose Self-Hosted Deployment",
+  "description": "Deploy Open Brain with a single docker-compose.yml on any Linux host. Runs PostgreSQL + pgvector, the MCP server, and a local Ollama for embeddings and metadata extraction — no Supabase, no OpenRouter, no cloud dependencies. Companion to the Kubernetes integration for single-host home-server deployments.",
+  "category": "integrations",
+  "author": {
+    "name": "Jim Powers",
+    "github": "corruptmemory"
+  },
+  "version": "1.0.0",
+  "requires": {
+    "open_brain": true,
+    "services": ["PostgreSQL", "pgvector", "Ollama"],
+    "tools": ["Docker", "docker-compose"]
+  },
+  "tags": [
+    "docker",
+    "docker-compose",
+    "self-hosted",
+    "postgresql",
+    "pgvector",
+    "ollama",
+    "local-llm",
+    "deployment",
+    "home-server"
+  ],
+  "difficulty": "intermediate",
+  "estimated_time": "30 minutes",
+  "created": "2026-04-10",
+  "updated": "2026-04-10"
+}

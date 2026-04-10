@@ -1,0 +1,7 @@
+# Local secrets — created from .env.example, never committed.
+.env
+
+# Runtime data — Postgres cluster and downloaded Ollama models.
+# These are bind mounts created on `docker compose up`. They can be huge
+# (models) and always contain host-specific state (database pages).
+data/
