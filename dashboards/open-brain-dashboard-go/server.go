@@ -30,6 +30,7 @@ func NewServer(db *DB, ollama *OllamaClient) *Server {
 	s.router.Get("/", s.handleHome)
 	s.router.Get("/browse", s.handleBrowse)
 	s.router.Get("/search", s.handleSearch)
+	s.router.Post("/capture", s.handleCapture)
 	s.router.Get("/thought/{id}", s.handleDetail)
 	s.router.Get("/thought/{id}/edit", s.handleEditForm)
 	s.router.Post("/thought/{id}/edit", s.handleUpdate)
@@ -144,6 +145,43 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	if err := templates.Search(*data).Render(r.Context(), w); err != nil {
 		http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "parse form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	content := strings.TrimSpace(r.FormValue("content"))
+	typ := strings.TrimSpace(r.FormValue("type"))
+	if content == "" {
+		http.Error(w, "content cannot be empty", http.StatusBadRequest)
+		return
+	}
+	if typ == "" {
+		typ = "observation"
+	}
+
+	embedding, err := s.ollama.Embed(r.Context(), content)
+	if err != nil {
+		http.Error(w, "embed failed: "+err.Error()+" (Ollama unreachable? try again in a moment)", http.StatusServiceUnavailable)
+		return
+	}
+
+	id, err := s.db.CreateThought(r.Context(), CreateThoughtInput{
+		Content:   content,
+		Type:      typ,
+		Topics:    parseCSVField(r.FormValue("topics")),
+		People:    parseCSVField(r.FormValue("people")),
+		Embedding: embedding,
+	})
+	if err != nil {
+		http.Error(w, "create: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/thought/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
 }
 
 func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {

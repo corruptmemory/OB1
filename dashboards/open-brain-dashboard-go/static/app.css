@@ -847,6 +847,56 @@ a:hover {
 	border: 1px solid var(--border-muted);
 }
 
+/* --------------------------------------------------------------- capture disclosure */
+
+.capture-disclosure {
+	margin-bottom: var(--space-6);
+	background: var(--bg-elevated);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg);
+	overflow: hidden;
+}
+
+.capture-summary {
+	cursor: pointer;
+	padding: var(--space-4) var(--space-5);
+	font-size: 0.95rem;
+	font-weight: 600;
+	color: var(--accent);
+	user-select: none;
+	list-style: none;
+}
+
+.capture-summary::-webkit-details-marker {
+	display: none;
+}
+
+.capture-summary:hover {
+	background: var(--bg-raised);
+}
+
+.capture-disclosure[open] .capture-summary {
+	border-bottom: 1px solid var(--border-muted);
+}
+
+.capture-form {
+	padding: var(--space-5);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.capture-meta-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-4);
+}
+
+.capture-field--wide {
+	flex: 1;
+	min-width: 200px;
+}
+
 /* --------------------------------------------------------------- detail actions */
 
 .detail-updated {

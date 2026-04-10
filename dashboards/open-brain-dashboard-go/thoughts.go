@@ -378,6 +378,56 @@ func (d *DB) SearchText(ctx context.Context, query string, page int) (*templates
 	}, nil
 }
 
+// CreateThoughtInput is the set of fields the dashboard's quick-capture
+// form writes through to a new thoughts row. Embedding is always required
+// because capture always runs ollama.Embed before the DB write — there's
+// no "skip embedding" path on create.
+type CreateThoughtInput struct {
+	Content   string
+	Type      string
+	Topics    []string
+	People    []string
+	Embedding []float32
+}
+
+// CreateThought inserts a new thoughts row and returns its id. Metadata
+// is built as a fresh jsonb object with type/topics/people/source; the
+// MCP capture path writes source="mcp", so the dashboard writes
+// source="dashboard" to keep provenance visible in the raw metadata blob
+// on the detail page.
+func (d *DB) CreateThought(ctx context.Context, in CreateThoughtInput) (int64, error) {
+	topics := in.Topics
+	if topics == nil {
+		topics = []string{}
+	}
+	people := in.People
+	if people == nil {
+		people = []string{}
+	}
+	metadata := map[string]any{
+		"type":   in.Type,
+		"topics": topics,
+		"people": people,
+		"source": "dashboard",
+	}
+	metaJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return 0, fmt.Errorf("marshal metadata: %w", err)
+	}
+
+	var id int64
+	vec := pgvector.NewVector(in.Embedding)
+	err = d.pool.QueryRow(ctx, `
+		INSERT INTO thoughts (content, metadata, embedding)
+		VALUES ($1, $2::jsonb, $3)
+		RETURNING id
+	`, in.Content, metaJSON, vec).Scan(&id)
+	if err != nil {
+		return 0, fmt.Errorf("insert thought: %w", err)
+	}
+	return id, nil
+}
+
 // UpdateThoughtInput is the set of editable fields carried from the edit
 // form's POST body through to the SQL update. Embedding is optional — nil
 // means "content didn't change, preserve the existing embedding unchanged."

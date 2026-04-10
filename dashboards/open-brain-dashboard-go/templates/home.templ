@@ -11,6 +11,41 @@ templ Home(data HomeData) {
 			</nav>
 		</header>
 		<main class="app-main">
+			<details class="capture-disclosure">
+				<summary class="capture-summary">+ capture a thought</summary>
+				<form class="capture-form" method="post" action="/capture">
+					<label class="edit-field">
+						<span class="edit-label">content</span>
+						<textarea name="content" rows="6" class="edit-textarea" required placeholder="what's on your mind?"></textarea>
+					</label>
+
+					<div class="capture-meta-row">
+						<label class="edit-field">
+							<span class="edit-label">type</span>
+							<select name="type" class="edit-select">
+								<option value="observation" selected>observation</option>
+								<option value="task">task</option>
+								<option value="idea">idea</option>
+								<option value="reference">reference</option>
+								<option value="person_note">person_note</option>
+							</select>
+						</label>
+						<label class="edit-field capture-field--wide">
+							<span class="edit-label">topics <span class="edit-hint">(comma separated)</span></span>
+							<input type="text" name="topics" class="edit-input"/>
+						</label>
+						<label class="edit-field capture-field--wide">
+							<span class="edit-label">people <span class="edit-hint">(comma separated)</span></span>
+							<input type="text" name="people" class="edit-input"/>
+						</label>
+					</div>
+
+					<div class="edit-actions">
+						<button type="submit" class="edit-save">capture</button>
+					</div>
+				</form>
+			</details>
+
 			<section class="stats-grid">
 				<div class="stat-card stat-card--hero">
 					<div class="stat-value">{ ItoA64(data.Total) }</div>
