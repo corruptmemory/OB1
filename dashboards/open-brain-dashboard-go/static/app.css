@@ -847,6 +847,192 @@ a:hover {
 	border: 1px solid var(--border-muted);
 }
 
+/* --------------------------------------------------------------- detail actions */
+
+.detail-updated {
+	font-size: 0.8rem;
+	color: var(--fg-subtle);
+	font-style: italic;
+	margin-top: var(--space-1);
+}
+
+.detail-actions {
+	display: flex;
+	gap: var(--space-3);
+	margin-top: var(--space-3);
+}
+
+.action-edit {
+	display: inline-block;
+	padding: var(--space-2) var(--space-4);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--bg-raised);
+	color: var(--fg);
+	font-size: 0.85rem;
+	font-weight: 600;
+	text-decoration: none;
+}
+
+.action-edit:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+	text-decoration: none;
+}
+
+.delete-form {
+	display: inline-block;
+	margin: 0;
+}
+
+.action-delete {
+	display: inline-block;
+	padding: var(--space-2) var(--space-4);
+	border: 1px solid rgba(248, 81, 73, 0.35);
+	border-radius: var(--radius);
+	background: rgba(248, 81, 73, 0.08);
+	color: #ff7b72;
+	font-family: var(--font-sans);
+	font-size: 0.85rem;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.action-delete:hover {
+	background: rgba(248, 81, 73, 0.18);
+	border-color: var(--danger);
+}
+
+/* --------------------------------------------------------------- edit form */
+
+.detail-edit-mode {
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--warning);
+	border: 1px solid var(--warning);
+	padding: 1px var(--space-2);
+	border-radius: var(--radius);
+}
+
+.edit-error {
+	background: rgba(248, 81, 73, 0.08);
+	border: 1px solid rgba(248, 81, 73, 0.35);
+	border-radius: var(--radius);
+	padding: var(--space-3) var(--space-4);
+	color: #ff7b72;
+	font-size: 0.9rem;
+}
+
+.edit-form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.edit-field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.edit-label {
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--fg-muted);
+	font-weight: 600;
+}
+
+.edit-hint {
+	text-transform: none;
+	letter-spacing: 0;
+	color: var(--fg-subtle);
+	font-weight: 400;
+}
+
+.edit-textarea {
+	background: var(--bg);
+	color: var(--fg);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: var(--space-3) var(--space-4);
+	font-family: var(--font-sans);
+	font-size: 0.95rem;
+	line-height: 1.6;
+	resize: vertical;
+	min-height: 220px;
+}
+
+.edit-textarea:focus,
+.edit-input:focus,
+.edit-select:focus {
+	outline: none;
+	border-color: var(--accent);
+	box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+.edit-row {
+	display: flex;
+	gap: var(--space-4);
+}
+
+.edit-select {
+	background: var(--bg);
+	color: var(--fg);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: var(--space-2) var(--space-3);
+	font-family: var(--font-sans);
+	font-size: 0.9rem;
+	min-width: 180px;
+}
+
+.edit-input {
+	background: var(--bg);
+	color: var(--fg);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: var(--space-2) var(--space-3);
+	font-family: var(--font-sans);
+	font-size: 0.9rem;
+}
+
+.edit-actions {
+	display: flex;
+	gap: var(--space-3);
+	align-items: center;
+	padding-top: var(--space-3);
+	border-top: 1px solid var(--border-muted);
+}
+
+.edit-save {
+	background: var(--accent);
+	color: var(--bg);
+	border: 1px solid var(--accent);
+	border-radius: var(--radius);
+	padding: var(--space-3) var(--space-5);
+	font-family: var(--font-sans);
+	font-size: 0.95rem;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.edit-save:hover {
+	background: #4a8fe5;
+	border-color: #4a8fe5;
+}
+
+.edit-cancel {
+	color: var(--fg-muted);
+	font-size: 0.9rem;
+}
+
+.edit-cancel:hover {
+	color: var(--fg);
+	text-decoration: none;
+}
+
 /* raw metadata disclosure */
 
 .detail-raw {

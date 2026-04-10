@@ -28,6 +28,20 @@ templ Detail(t ThoughtDetail) {
 							<span class="detail-source">via { t.Source }</span>
 						}
 					</div>
+					if t.UpdatedAt != nil {
+						<div class="detail-updated">edited { HumanTime(*t.UpdatedAt) }</div>
+					}
+					<div class="detail-actions">
+						<a class="action-edit" href={ templ.SafeURL(fmt.Sprintf("/thought/%d/edit", t.ID)) }>edit</a>
+						<form
+							method="post"
+							action={ templ.SafeURL(fmt.Sprintf("/thought/%d/delete", t.ID)) }
+							class="delete-form"
+							onsubmit="return confirm('Delete this thought? This cannot be undone.');"
+						>
+							<button type="submit" class="action-delete">delete</button>
+						</form>
+					</div>
 				</header>
 
 				<div class="detail-content">

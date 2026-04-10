@@ -9,22 +9,41 @@ Intended to pair with [`integrations/docker-compose-deployment/`](../../integrat
 
 ## Status
 
-v0 complete. Home, detail, browse, and search all work against a real
-Open Brain database.
+v1 complete. Home, detail, browse, and search work against a real Open
+Brain database; individual thoughts can now be edited and deleted.
 
 ## What It Does
 
-| Page | State | Purpose |
-|------|-------|---------|
+| Page / Action | State | Purpose |
+|---------------|-------|---------|
 | Home | **working** | Stats overview (total, this week, by type, top topics) plus the most recent captures |
-| Detail | **working** | Single-thought view with full metadata, action items with priority chips, dates mentioned, and a raw-JSON disclosure |
+| Detail | **working** | Single-thought view with full metadata, action items with priority chips, dates mentioned, and a raw-JSON disclosure. Shows "edited X ago" when the thought has been modified via the dashboard. |
 | Browse | **working** | Paginated filtered list — type chip row, topic/person/content-substring inputs, time window dropdown, pagination with filter preservation |
 | Search | **working** | Semantic (pgvector cosine) and text (ILIKE) modes with a mode-toggle switch, similarity badges on semantic results, and a graceful text-mode fallback when semantic embedding fails |
+| Edit | **working** | Dedicated edit form at `/thought/{id}/edit` for content (textarea), type (select), topics and people (comma-separated). Content changes trigger a sync re-embed via Ollama; metadata-only edits skip Ollama entirely. Update timestamps are stored at `metadata.updated_at`, keeping the stock OB1 schema untouched. |
+| Delete | **working** | `POST /thought/{id}/delete` with browser-native confirm. 303-redirects to the home page and decrements the total count. |
 
-v1 adds inline edit and delete. v2 adds duplicates, audit, and ingestion
-queue — features that require their own new tables but never alter the
-existing `thoughts` table. Eventual candidate for a Gmail-style
-master/detail two-pane layout refactor once bulk operations arrive.
+v2 adds duplicates, audit, and ingestion queue — features that require
+their own new tables but never alter the existing `thoughts` table.
+Eventual candidate for a Gmail-style master/detail two-pane layout
+refactor once bulk operations arrive.
+
+## URL Surface
+
+```
+GET  /                           home (stats + recent)
+GET  /browse[?type=&topic=&person=&q=&days=&page=]
+GET  /search[?q=&mode=semantic|text&page=]
+GET  /thought/{id}               readonly detail
+GET  /thought/{id}/edit          edit form
+POST /thought/{id}/edit          update handler
+POST /thought/{id}/delete        delete handler
+```
+
+Update and delete are classic POST-redirect-GET flows, not htmx — the
+dashboard works with JavaScript disabled. htmx stays loaded so future
+features (v1.1 quick-capture, v2 bulk operations) can use it without
+an additional dependency move.
 
 ## Home Page Data Model
 

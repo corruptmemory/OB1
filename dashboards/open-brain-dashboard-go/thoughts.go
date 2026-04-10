@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/NateBJones-Projects/OB1/dashboards/open-brain-dashboard-go/templates"
+	"github.com/jackc/pgx/v5"
 	"github.com/pgvector/pgvector-go"
 )
 
@@ -376,6 +378,92 @@ func (d *DB) SearchText(ctx context.Context, query string, page int) (*templates
 	}, nil
 }
 
+// UpdateThoughtInput is the set of editable fields carried from the edit
+// form's POST body through to the SQL update. Embedding is optional — nil
+// means "content didn't change, preserve the existing embedding unchanged."
+type UpdateThoughtInput struct {
+	Content   string
+	Type      string
+	Topics    []string
+	People    []string
+	Embedding []float32
+}
+
+// UpdateThought writes the edit-form values back to a single row. Type,
+// topics, people, and updated_at are merged into the existing metadata
+// jsonb blob via the || operator, so fields we don't touch (action_items,
+// dates_mentioned, source, content_fingerprint, etc.) carry over untouched.
+// When Embedding is non-nil we also update the embedding column in the same
+// statement, keeping content and its vector atomically consistent.
+func (d *DB) UpdateThought(ctx context.Context, id int64, in UpdateThoughtInput) error {
+	// Build the metadata patch. jsonb's || operator merges keys at the top
+	// level with the right side winning, which is exactly the semantics we
+	// want: metadata || {"type": "idea", ...} leaves everything else alone.
+	patch := map[string]any{
+		"type":       in.Type,
+		"topics":     in.Topics,
+		"people":     in.People,
+		"updated_at": time.Now().UTC().Format(time.RFC3339),
+	}
+	// JSON nil slices become "null" which overwrites as null in jsonb; force
+	// empty arrays so the metadata shape stays consistent with captures.
+	if in.Topics == nil {
+		patch["topics"] = []string{}
+	}
+	if in.People == nil {
+		patch["people"] = []string{}
+	}
+	patchJSON, err := json.Marshal(patch)
+	if err != nil {
+		return fmt.Errorf("marshal metadata patch: %w", err)
+	}
+
+	if in.Embedding != nil {
+		vec := pgvector.NewVector(in.Embedding)
+		tag, err := d.pool.Exec(ctx, `
+			UPDATE thoughts
+			SET content = $2,
+			    metadata = metadata || $3::jsonb,
+			    embedding = $4
+			WHERE id = $1
+		`, id, in.Content, patchJSON, vec)
+		if err != nil {
+			return fmt.Errorf("update thought with embedding: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return pgx.ErrNoRows
+		}
+		return nil
+	}
+
+	tag, err := d.pool.Exec(ctx, `
+		UPDATE thoughts
+		SET content = $2,
+		    metadata = metadata || $3::jsonb
+		WHERE id = $1
+	`, id, in.Content, patchJSON)
+	if err != nil {
+		return fmt.Errorf("update thought: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+// DeleteThought removes a row by id. Returns pgx.ErrNoRows when the id
+// doesn't exist so the handler can 404 instead of 500.
+func (d *DB) DeleteThought(ctx context.Context, id int64) error {
+	tag, err := d.pool.Exec(ctx, `DELETE FROM thoughts WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("delete thought: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 // ThoughtByID fetches a single thought and its full metadata for the detail
 // page. Returns pgx.ErrNoRows unchanged when the id doesn't exist so the
 // handler can branch to a 404 via errors.Is.
@@ -399,12 +487,13 @@ func (d *DB) ThoughtByID(ctx context.Context, id int64) (*templates.ThoughtDetai
 	// mismatches (action_items can be strings or objects) are handled by
 	// ActionItem.UnmarshalJSON and the jsonb_typeof guards in the SQL.
 	var m struct {
-		Type           string              `json:"type"`
-		Topics         []string            `json:"topics"`
-		People         []string            `json:"people"`
+		Type           string                 `json:"type"`
+		Topics         []string               `json:"topics"`
+		People         []string               `json:"people"`
 		ActionItems    []templates.ActionItem `json:"action_items"`
-		DatesMentioned []string            `json:"dates_mentioned"`
-		Source         string              `json:"source"`
+		DatesMentioned []string               `json:"dates_mentioned"`
+		Source         string                 `json:"source"`
+		UpdatedAt      string                 `json:"updated_at"`
 	}
 	_ = json.Unmarshal(meta, &m)
 	if m.Type == "" {
@@ -416,6 +505,11 @@ func (d *DB) ThoughtByID(ctx context.Context, id int64) (*templates.ThoughtDetai
 	detail.ActionItems = m.ActionItems
 	detail.DatesMentioned = m.DatesMentioned
 	detail.Source = m.Source
+	if m.UpdatedAt != "" {
+		if ts, err := time.Parse(time.RFC3339, m.UpdatedAt); err == nil {
+			detail.UpdatedAt = &ts
+		}
+	}
 
 	return &detail, nil
 }

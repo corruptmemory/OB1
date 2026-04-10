@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/NateBJones-Projects/OB1/dashboards/open-brain-dashboard-go/templates"
 	"github.com/go-chi/chi/v5"
@@ -30,6 +31,9 @@ func NewServer(db *DB, ollama *OllamaClient) *Server {
 	s.router.Get("/browse", s.handleBrowse)
 	s.router.Get("/search", s.handleSearch)
 	s.router.Get("/thought/{id}", s.handleDetail)
+	s.router.Get("/thought/{id}/edit", s.handleEditForm)
+	s.router.Post("/thought/{id}/edit", s.handleUpdate)
+	s.router.Post("/thought/{id}/delete", s.handleDelete)
 
 	// Static files (tokens.css, app.css, vendor/htmx.min.js, ...) served flat
 	// under /static/ to match the thought-store convention.
@@ -161,4 +165,149 @@ func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 	if err := templates.Detail(*detail).Render(r.Context(), w); err != nil {
 		http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// parseIDParam pulls {id} out of the chi URL param and parses it as an
+// int64. Returns the id and ok=true on success; on failure it writes a
+// 400 response and returns ok=false so the caller can just `return`.
+func parseIDParam(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Error(w, "thought id must be an integer", http.StatusBadRequest)
+		return 0, false
+	}
+	return id, true
+}
+
+// parseCSVField splits a comma-separated input (topics or people) into a
+// trimmed, de-duplicated slice. Empty input returns an empty slice, not
+// nil, so the JSON patch stays an explicit empty array rather than null.
+func parseCSVField(raw string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" || seen[part] {
+			continue
+		}
+		seen[part] = true
+		out = append(out, part)
+	}
+	return out
+}
+
+func (s *Server) handleEditForm(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseIDParam(w, r)
+	if !ok {
+		return
+	}
+	detail, err := s.db.ThoughtByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, "thought not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "load thought: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	data := templates.EditFormData{
+		Thought:      *detail,
+		ContentInput: detail.Content,
+		TypeInput:    detail.Type,
+		TopicsInput:  templates.RenderableTopics(detail.Topics),
+		PeopleInput:  templates.RenderableTopics(detail.People),
+	}
+	if err := templates.DetailEdit(data).Render(r.Context(), w); err != nil {
+		http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseIDParam(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "parse form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	existing, err := s.db.ThoughtByID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, "thought not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "load thought: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	content := strings.TrimSpace(r.FormValue("content"))
+	typ := strings.TrimSpace(r.FormValue("type"))
+	topicsRaw := r.FormValue("topics")
+	peopleRaw := r.FormValue("people")
+
+	renderEditError := func(msg string) {
+		data := templates.EditFormData{
+			Thought:      *existing,
+			Error:        msg,
+			ContentInput: content,
+			TypeInput:    typ,
+			TopicsInput:  topicsRaw,
+			PeopleInput:  peopleRaw,
+		}
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_ = templates.DetailEdit(data).Render(r.Context(), w)
+	}
+
+	if content == "" {
+		renderEditError("content cannot be empty")
+		return
+	}
+
+	input := UpdateThoughtInput{
+		Content: content,
+		Type:    typ,
+		Topics:  parseCSVField(topicsRaw),
+		People:  parseCSVField(peopleRaw),
+	}
+
+	// Re-embed only when content actually changed. Metadata-only edits
+	// skip Ollama entirely, which keeps edit-save latency close to a
+	// single round-trip when you're just retagging.
+	if content != existing.Content {
+		embedding, embedErr := s.ollama.Embed(r.Context(), content)
+		if embedErr != nil {
+			renderEditError("embedding failed: " + embedErr.Error() + " (try again in a moment, don't save stale embeddings)")
+			return
+		}
+		input.Embedding = embedding
+	}
+
+	if err := s.db.UpdateThought(r.Context(), id, input); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, "thought not found", http.StatusNotFound)
+			return
+		}
+		renderEditError(err.Error())
+		return
+	}
+
+	http.Redirect(w, r, "/thought/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
+	id, ok := parseIDParam(w, r)
+	if !ok {
+		return
+	}
+	if err := s.db.DeleteThought(r.Context(), id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, "thought not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "delete: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

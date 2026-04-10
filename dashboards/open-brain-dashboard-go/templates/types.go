@@ -80,12 +80,15 @@ func (a *ActionItem) UnmarshalJSON(data []byte) error {
 // ThoughtDetail is the full view model for the detail page. It embeds
 // ThoughtData so every place that already takes a ThoughtData (ThoughtCard,
 // list rows, etc.) works unchanged, and adds the heavier fields the detail
-// page renders.
+// page renders. UpdatedAt is nil for thoughts that have never been edited
+// — it lives inside the metadata jsonb blob (as metadata.updated_at) so
+// the stock OB1 schema stays untouched.
 type ThoughtDetail struct {
 	ThoughtData
 	ActionItems    []ActionItem
 	DatesMentioned []string
 	Source         string
+	UpdatedAt      *time.Time
 	RawMetadata    []byte
 }
 
