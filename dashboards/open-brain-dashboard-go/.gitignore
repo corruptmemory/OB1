@@ -1,0 +1,4 @@
+/open-brain-dashboard-go
+/tmp/
+*_templ.go
+/open-brain-dashboard-go.toml

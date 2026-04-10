@@ -1,0 +1,20 @@
+{
+  "name": "Open Brain Dashboard (Go)",
+  "description": "Self-hosted Open Brain dashboard as a single static Go binary. Talks directly to PostgreSQL + pgvector and to Ollama for semantic-search embeddings. Pairs with integrations/docker-compose-deployment/.",
+  "category": "dashboards",
+  "author": {
+    "name": "Jim Powers",
+    "github": "corruptmemory"
+  },
+  "version": "0.1.0",
+  "requires": {
+    "open_brain": true,
+    "services": ["postgres", "pgvector", "ollama"],
+    "tools": ["Go 1.25+", "templ", "htmx"]
+  },
+  "tags": ["self-hosted", "go", "htmx", "templ", "chi", "postgres", "pgvector", "ollama"],
+  "difficulty": "intermediate",
+  "estimated_time": "10 minutes",
+  "created": "2026-04-10",
+  "updated": "2026-04-10"
+}
