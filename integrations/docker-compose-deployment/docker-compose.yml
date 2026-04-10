@@ -36,8 +36,13 @@ services:
       # OLLAMA_VULKAN: "1"
     volumes:
       - ./data/ollama:/root/.ollama
-    # Deliberately no host port published. The MCP server reaches Ollama over
-    # the internal open-brain network at http://ollama:11434.
+    ports:
+      # LAN-visible so dashboards and other tools on the home network can
+      # generate embeddings directly (e.g. open-brain-dashboard-go running
+      # on a laptop talks to home-server:11434 for semantic search queries).
+      # Ollama has no built-in auth, so only expose this on a trusted VLAN —
+      # change to "127.0.0.1:11434:11434" to restrict to localhost on the host.
+      - "0.0.0.0:11434:11434"
     networks:
       - open-brain
 
