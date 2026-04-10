@@ -13,6 +13,9 @@ templ ThoughtCard(t ThoughtData) {
 			<div class="thought-meta">
 				<span class={ TypeClass(t.Type) }>{ t.Type }</span>
 				<time class="thought-time">{ HumanTime(t.CreatedAt) }</time>
+				if t.Similarity > 0 {
+					<span class="similarity-badge">{ SimilarityPct(t.Similarity) }</span>
+				}
 			</div>
 			<p class="thought-content">{ Truncate(t.Content, 240) }</p>
 			if len(t.Topics) > 0 || len(t.People) > 0 {

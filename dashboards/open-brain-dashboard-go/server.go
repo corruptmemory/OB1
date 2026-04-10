@@ -28,6 +28,7 @@ func NewServer(db *DB, ollama *OllamaClient) *Server {
 
 	s.router.Get("/", s.handleHome)
 	s.router.Get("/browse", s.handleBrowse)
+	s.router.Get("/search", s.handleSearch)
 	s.router.Get("/thought/{id}", s.handleDetail)
 
 	// Static files (tokens.css, app.css, vendor/htmx.min.js, ...) served flat
@@ -78,6 +79,65 @@ func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := templates.Browse(*data).Render(r.Context(), w); err != nil {
+		http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	query := q.Get("q")
+	mode := q.Get("mode")
+	if mode != "text" {
+		mode = "semantic"
+	}
+	page := 1
+	if pageStr := q.Get("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+
+	// Empty query — just render the landing form, no queries run.
+	if query == "" {
+		data := templates.SearchData{Mode: mode}
+		if err := templates.Search(data).Render(r.Context(), w); err != nil {
+			http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	var (
+		data *templates.SearchData
+		err  error
+	)
+
+	if mode == "semantic" {
+		embedding, embedErr := s.ollama.Embed(r.Context(), query)
+		if embedErr != nil {
+			// Don't 500 — show the user a graceful error panel with a
+			// text-mode retry link. Their query is still valid; we just
+			// can't embed it right now.
+			data = &templates.SearchData{
+				Query:      query,
+				Mode:       "semantic",
+				EmbedError: embedErr.Error(),
+			}
+		} else {
+			data, err = s.db.SearchSemantic(r.Context(), query, embedding, page)
+			if err != nil {
+				http.Error(w, "semantic search: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+	} else {
+		data, err = s.db.SearchText(r.Context(), query, page)
+		if err != nil {
+			http.Error(w, "text search: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if err := templates.Search(*data).Render(r.Context(), w); err != nil {
 		http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
 	}
 }

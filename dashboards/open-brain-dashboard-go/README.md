@@ -9,22 +9,22 @@ Intended to pair with [`integrations/docker-compose-deployment/`](../../integrat
 
 ## Status
 
-v0 in progress. The home page works against a real Open Brain database and
-renders stats plus the most recent captures. Detail, browse, and search
-handlers land next in that order.
+v0 complete. Home, detail, browse, and search all work against a real
+Open Brain database.
 
 ## What It Does
 
 | Page | State | Purpose |
 |------|-------|---------|
-| Home | **working** | Stats overview (total, this week, by type, top topics) plus the most recent N captures as cards with type chips, relative timestamps, and topic/people tags |
-| Detail | planned next | Single-thought view with full metadata |
-| Browse | planned | Paginated, filtered thought list (type / topic / person / date) |
-| Search | planned | Semantic (pgvector) and full-text (ILIKE) search |
+| Home | **working** | Stats overview (total, this week, by type, top topics) plus the most recent captures |
+| Detail | **working** | Single-thought view with full metadata, action items with priority chips, dates mentioned, and a raw-JSON disclosure |
+| Browse | **working** | Paginated filtered list — type chip row, topic/person/content-substring inputs, time window dropdown, pagination with filter preservation |
+| Search | **working** | Semantic (pgvector cosine) and text (ILIKE) modes with a mode-toggle switch, similarity badges on semantic results, and a graceful text-mode fallback when semantic embedding fails |
 
 v1 adds inline edit and delete. v2 adds duplicates, audit, and ingestion
 queue — features that require their own new tables but never alter the
-existing `thoughts` table.
+existing `thoughts` table. Eventual candidate for a Gmail-style
+master/detail two-pane layout refactor once bulk operations arrive.
 
 ## Home Page Data Model
 

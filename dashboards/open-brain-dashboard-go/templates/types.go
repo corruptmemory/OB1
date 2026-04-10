@@ -7,16 +7,19 @@ import (
 )
 
 // ThoughtData is the view model for a single thought as rendered on the
-// home page's recent list (and, later, browse/detail pages). Fields are
-// flattened out of the `thoughts.metadata` jsonb blob by the main package's
-// query layer so templates can render without re-parsing JSON.
+// home page's recent list and browse/search pages. Fields are flattened
+// out of the `thoughts.metadata` jsonb blob by the main package's query
+// layer so templates can render without re-parsing JSON. Similarity is
+// populated only by the semantic-search path and ignored elsewhere — a
+// zero value tells ThoughtCard to skip the score badge.
 type ThoughtData struct {
-	ID        int64
-	Content   string
-	Type      string
-	Topics    []string
-	People    []string
-	CreatedAt time.Time
+	ID         int64
+	Content    string
+	Type       string
+	Topics     []string
+	People     []string
+	CreatedAt  time.Time
+	Similarity float64
 }
 
 type TypeCount struct {
@@ -112,4 +115,19 @@ type BrowseData struct {
 	Page       int
 	PerPage    int
 	TotalPages int
+}
+
+// SearchData is the payload the search page renders. Mode is either
+// "semantic" or "text". EmbedError, if non-empty, indicates that semantic
+// mode tried to call Ollama and failed — the template renders a graceful
+// error panel with a text-mode retry link instead of returning 500.
+type SearchData struct {
+	Query      string
+	Mode       string
+	Results    []ThoughtData
+	Total      int64
+	Page       int
+	PerPage    int
+	TotalPages int
+	EmbedError string
 }

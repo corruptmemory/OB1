@@ -7,12 +7,14 @@ import (
 	"strings"
 
 	"github.com/NateBJones-Projects/OB1/dashboards/open-brain-dashboard-go/templates"
+	"github.com/pgvector/pgvector-go"
 )
 
 const (
 	recentLimit    = 20
 	topTopicsLimit = 10
 	browsePerPage  = 20
+	searchPerPage  = 20
 )
 
 // HomeData runs the four queries the home page needs — total count, counts
@@ -219,6 +221,157 @@ func (d *DB) Browse(ctx context.Context, f templates.BrowseFilter, page int) (*t
 		Total:      total,
 		Page:       page,
 		PerPage:    browsePerPage,
+		TotalPages: totalPages,
+	}, nil
+}
+
+// scanRowsIntoThoughts is a helper used by the browse, search, and home
+// query paths that all do the same "scan id+content+metadata+created_at
+// into a ThoughtData slice" work. The extraScan slice holds optional extra
+// pointers (e.g. a similarity float) that the caller wants appended to the
+// Scan argument list, in the order they appear in the SELECT.
+func scanThoughtRow(row interface {
+	Scan(dest ...any) error
+}, t *templates.ThoughtData, extras ...any) error {
+	var meta []byte
+	base := []any{&t.ID, &t.Content, &meta, &t.CreatedAt}
+	if err := row.Scan(append(base, extras...)...); err != nil {
+		return err
+	}
+	var m struct {
+		Type   string   `json:"type"`
+		Topics []string `json:"topics"`
+		People []string `json:"people"`
+	}
+	_ = json.Unmarshal(meta, &m)
+	if m.Type == "" {
+		m.Type = "unknown"
+	}
+	t.Type = m.Type
+	t.Topics = m.Topics
+	t.People = m.People
+	return nil
+}
+
+// SearchSemantic runs a pgvector similarity search. The embedding is
+// expected to be a 1024-dim float32 slice produced by mxbai-embed-large
+// via the Ollama client. Results are ordered by ascending cosine distance
+// (<=>), and Similarity is populated as (1 - distance) so 1.0 means
+// identical and 0.0 means orthogonal.
+func (d *DB) SearchSemantic(ctx context.Context, query string, embedding []float32, page int) (*templates.SearchData, error) {
+	if page < 1 {
+		page = 1
+	}
+	vec := pgvector.NewVector(embedding)
+
+	var total int64
+	if err := d.pool.QueryRow(ctx, `
+		SELECT count(*) FROM thoughts WHERE embedding IS NOT NULL
+	`).Scan(&total); err != nil {
+		return nil, fmt.Errorf("semantic count: %w", err)
+	}
+
+	totalPages := int((total + int64(searchPerPage) - 1) / int64(searchPerPage))
+	if totalPages == 0 {
+		totalPages = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+	offset := (page - 1) * searchPerPage
+
+	rows, err := d.pool.Query(ctx, `
+		SELECT id, content, metadata, created_at,
+		       1 - (embedding <=> $1) AS similarity
+		FROM thoughts
+		WHERE embedding IS NOT NULL
+		ORDER BY embedding <=> $1
+		LIMIT $2 OFFSET $3
+	`, vec, searchPerPage, offset)
+	if err != nil {
+		return nil, fmt.Errorf("semantic query: %w", err)
+	}
+	defer rows.Close()
+
+	var results []templates.ThoughtData
+	for rows.Next() {
+		var t templates.ThoughtData
+		if err := scanThoughtRow(rows, &t, &t.Similarity); err != nil {
+			return nil, fmt.Errorf("semantic scan: %w", err)
+		}
+		results = append(results, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("semantic rows: %w", err)
+	}
+
+	return &templates.SearchData{
+		Query:      query,
+		Mode:       "semantic",
+		Results:    results,
+		Total:      total,
+		Page:       page,
+		PerPage:    searchPerPage,
+		TotalPages: totalPages,
+	}, nil
+}
+
+// SearchText runs a plain ILIKE substring match on the content column,
+// ordered by recency. Dedicated to the /search page's text mode — browse
+// also exposes an ILIKE match via its `q` filter, but search is a
+// standalone "find me thoughts about X" flow with its own UX.
+func (d *DB) SearchText(ctx context.Context, query string, page int) (*templates.SearchData, error) {
+	if page < 1 {
+		page = 1
+	}
+
+	var total int64
+	if err := d.pool.QueryRow(ctx, `
+		SELECT count(*) FROM thoughts WHERE content ILIKE '%' || $1 || '%'
+	`, query).Scan(&total); err != nil {
+		return nil, fmt.Errorf("text count: %w", err)
+	}
+
+	totalPages := int((total + int64(searchPerPage) - 1) / int64(searchPerPage))
+	if totalPages == 0 {
+		totalPages = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+	offset := (page - 1) * searchPerPage
+
+	rows, err := d.pool.Query(ctx, `
+		SELECT id, content, metadata, created_at
+		FROM thoughts
+		WHERE content ILIKE '%' || $1 || '%'
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+	`, query, searchPerPage, offset)
+	if err != nil {
+		return nil, fmt.Errorf("text query: %w", err)
+	}
+	defer rows.Close()
+
+	var results []templates.ThoughtData
+	for rows.Next() {
+		var t templates.ThoughtData
+		if err := scanThoughtRow(rows, &t); err != nil {
+			return nil, fmt.Errorf("text scan: %w", err)
+		}
+		results = append(results, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("text rows: %w", err)
+	}
+
+	return &templates.SearchData{
+		Query:      query,
+		Mode:       "text",
+		Results:    results,
+		Total:      total,
+		Page:       page,
+		PerPage:    searchPerPage,
 		TotalPages: totalPages,
 	}, nil
 }

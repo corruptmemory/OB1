@@ -66,6 +66,12 @@ func ItoA(n int) string {
 	return strconv.Itoa(n)
 }
 
+// SimilarityPct formats a 0..1 similarity score as a percentage string
+// ("84%"). Used for the score badge on semantic-search results.
+func SimilarityPct(s float64) string {
+	return fmt.Sprintf("%d%%", int(s*100+0.5))
+}
+
 // BrowseURL builds a /browse?... URL from a filter plus target page. Empty
 // filter fields are omitted; page == 1 is omitted (that's the default).
 // This is the single source of truth for the browse URL shape, used by the
@@ -116,4 +122,23 @@ func TopicURL(topic string) string {
 // the clickable person tags on the detail page.
 func PersonURL(person string) string {
 	return BrowseURL(BrowseFilter{Person: person}, 1)
+}
+
+// SearchURL builds a /search?... URL preserving query, mode, and page.
+// Used by pagination and by mode-toggle links on the search page.
+func SearchURL(query, mode string, page int) string {
+	q := url.Values{}
+	if query != "" {
+		q.Set("q", query)
+	}
+	if mode != "" && mode != "semantic" {
+		q.Set("mode", mode)
+	}
+	if page > 1 {
+		q.Set("page", strconv.Itoa(page))
+	}
+	if len(q) == 0 {
+		return "/search"
+	}
+	return "/search?" + q.Encode()
 }
