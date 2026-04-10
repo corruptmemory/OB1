@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/NateBJones-Projects/OB1/dashboards/open-brain-dashboard-go/templates"
 )
@@ -11,6 +12,7 @@ import (
 const (
 	recentLimit    = 20
 	topTopicsLimit = 10
+	browsePerPage  = 20
 )
 
 // HomeData runs the four queries the home page needs — total count, counts
@@ -115,6 +117,110 @@ func (d *DB) HomeData(ctx context.Context) (*templates.HomeData, error) {
 	}
 
 	return hd, nil
+}
+
+// Browse runs a filtered + paginated list query against the thoughts
+// table. The filters combine with AND; empty fields are skipped. Topic and
+// person use the jsonb `?` operator to check for array membership, type
+// uses a scalar text match on metadata->>'type', q is a plain ILIKE
+// substring match on content, and days is a time window from now.
+//
+// pgx's numbered placeholders ($1, $2, ...) carry every user-supplied
+// value. The only value interpolated as raw SQL is the days interval,
+// which is a validated int and therefore injection-safe.
+func (d *DB) Browse(ctx context.Context, f templates.BrowseFilter, page int) (*templates.BrowseData, error) {
+	if page < 1 {
+		page = 1
+	}
+
+	var where strings.Builder
+	where.WriteString(" WHERE 1=1")
+	args := []any{}
+	n := 0
+	next := func() int { n++; return n }
+
+	if f.Type != "" {
+		fmt.Fprintf(&where, " AND metadata->>'type' = $%d", next())
+		args = append(args, f.Type)
+	}
+	if f.Topic != "" {
+		fmt.Fprintf(&where, " AND jsonb_typeof(metadata->'topics') = 'array' AND metadata->'topics' ? $%d", next())
+		args = append(args, f.Topic)
+	}
+	if f.Person != "" {
+		fmt.Fprintf(&where, " AND jsonb_typeof(metadata->'people') = 'array' AND metadata->'people' ? $%d", next())
+		args = append(args, f.Person)
+	}
+	if f.Q != "" {
+		fmt.Fprintf(&where, " AND content ILIKE '%%' || $%d || '%%'", next())
+		args = append(args, f.Q)
+	}
+	if f.Days > 0 {
+		// Days is an int from the handler's validated strconv.Atoi; no
+		// injection risk. pgx interval binding is awkward so we go direct.
+		fmt.Fprintf(&where, " AND created_at > now() - interval '%d days'", f.Days)
+	}
+
+	var total int64
+	countSQL := "SELECT count(*) FROM thoughts" + where.String()
+	if err := d.pool.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
+		return nil, fmt.Errorf("browse count: %w", err)
+	}
+
+	totalPages := int((total + int64(browsePerPage) - 1) / int64(browsePerPage))
+	if totalPages == 0 {
+		totalPages = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+	offset := (page - 1) * browsePerPage
+
+	listSQL := "SELECT id, content, metadata, created_at FROM thoughts" + where.String() +
+		fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", next(), next())
+	listArgs := append(args, browsePerPage, offset)
+
+	rows, err := d.pool.Query(ctx, listSQL, listArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("browse query: %w", err)
+	}
+	defer rows.Close()
+
+	var results []templates.ThoughtData
+	for rows.Next() {
+		var (
+			t    templates.ThoughtData
+			meta []byte
+		)
+		if err := rows.Scan(&t.ID, &t.Content, &meta, &t.CreatedAt); err != nil {
+			return nil, fmt.Errorf("browse scan: %w", err)
+		}
+		var m struct {
+			Type   string   `json:"type"`
+			Topics []string `json:"topics"`
+			People []string `json:"people"`
+		}
+		_ = json.Unmarshal(meta, &m)
+		if m.Type == "" {
+			m.Type = "unknown"
+		}
+		t.Type = m.Type
+		t.Topics = m.Topics
+		t.People = m.People
+		results = append(results, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("browse rows: %w", err)
+	}
+
+	return &templates.BrowseData{
+		Filter:     f,
+		Results:    results,
+		Total:      total,
+		Page:       page,
+		PerPage:    browsePerPage,
+		TotalPages: totalPages,
+	}, nil
 }
 
 // ThoughtByID fetches a single thought and its full metadata for the detail

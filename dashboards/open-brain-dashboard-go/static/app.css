@@ -300,6 +300,224 @@ a:hover {
 	border-color: rgba(88, 166, 255, 0.3);
 }
 
+/* --------------------------------------------------------------- browse / filter bar */
+
+.filter-bar {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+	margin-bottom: var(--space-5);
+}
+
+.filter-chip-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+
+.filter-chip {
+	display: inline-block;
+	padding: 4px var(--space-3);
+	border-radius: var(--radius);
+	font-size: 0.8rem;
+	font-weight: 600;
+	text-transform: lowercase;
+	letter-spacing: 0.02em;
+	border: 1px solid var(--border);
+	background: var(--bg-elevated);
+	color: var(--fg-muted);
+	text-decoration: none;
+	line-height: 1.4;
+}
+
+.filter-chip:hover {
+	border-color: var(--accent);
+	color: var(--fg);
+	text-decoration: none;
+}
+
+.filter-chip--active {
+	border-color: var(--accent);
+	background: var(--accent-dim);
+	color: var(--fg);
+	box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* When a filter chip also carries a type class, the type's color wins for
+   the text and the border; the active state just adds the glow. */
+.filter-chip.type-chip {
+	font-weight: 600;
+}
+
+.filter-form {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-3);
+	align-items: flex-end;
+	background: var(--bg-elevated);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg);
+	padding: var(--space-4);
+}
+
+.filter-field {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+	min-width: 140px;
+}
+
+.filter-field--wide {
+	flex: 1;
+	min-width: 200px;
+}
+
+.filter-label {
+	font-size: 0.7rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--fg-muted);
+	font-weight: 600;
+}
+
+.filter-form input[type="text"],
+.filter-form select {
+	background: var(--bg);
+	color: var(--fg);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: var(--space-2) var(--space-3);
+	font-family: var(--font-sans);
+	font-size: 0.9rem;
+	min-height: 32px;
+}
+
+.filter-form input[type="text"]:focus,
+.filter-form select:focus {
+	outline: none;
+	border-color: var(--accent);
+	box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+.filter-submit {
+	background: var(--accent);
+	color: var(--bg);
+	border: 1px solid var(--accent);
+	border-radius: var(--radius);
+	padding: var(--space-2) var(--space-4);
+	font-family: var(--font-sans);
+	font-size: 0.9rem;
+	font-weight: 600;
+	cursor: pointer;
+	min-height: 32px;
+}
+
+.filter-submit:hover {
+	background: #4a8fe5;
+	border-color: #4a8fe5;
+}
+
+.filter-clear {
+	color: var(--fg-muted);
+	font-size: 0.85rem;
+	align-self: center;
+}
+
+.filter-clear:hover {
+	color: var(--danger);
+	text-decoration: none;
+}
+
+/* --------------------------------------------------------------- browse results */
+
+.browse-results {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-4);
+}
+
+.results-header {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: var(--space-3);
+	padding-bottom: var(--space-2);
+}
+
+.results-count {
+	font-size: 0.95rem;
+	color: var(--fg);
+}
+
+.results-page {
+	font-size: 0.85rem;
+	color: var(--fg-muted);
+}
+
+.results-empty {
+	color: var(--fg-subtle);
+	font-style: italic;
+	padding: var(--space-6);
+	background: var(--bg-elevated);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg);
+	text-align: center;
+}
+
+.pagination {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-4);
+	margin-top: var(--space-5);
+	padding: var(--space-4);
+	background: var(--bg-elevated);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg);
+}
+
+.pagination-link {
+	color: var(--accent);
+	text-decoration: none;
+	font-size: 0.9rem;
+	padding: var(--space-2) var(--space-3);
+	border-radius: var(--radius);
+}
+
+.pagination-link:hover {
+	background: var(--bg-raised);
+	text-decoration: none;
+}
+
+.pagination-link--disabled {
+	color: var(--fg-subtle);
+	cursor: default;
+}
+
+.pagination-link--disabled:hover {
+	background: transparent;
+}
+
+.pagination-current {
+	font-size: 0.9rem;
+	color: var(--fg-muted);
+	font-variant-numeric: tabular-nums;
+}
+
+/* Linkable tags on the detail page — inherit the existing chip look and
+   just add a subtle hover underline. Kept separate from card-level tags
+   to avoid changing non-interactive variants elsewhere. */
+.topic-tag--link,
+.person-tag--link {
+	text-decoration: none;
+}
+
+.topic-tag--link:hover,
+.person-tag--link:hover {
+	border-color: var(--accent);
+	text-decoration: none;
+}
+
 /* --------------------------------------------------------------- card link wrapper */
 
 .thought-card-link {

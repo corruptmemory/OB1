@@ -85,3 +85,31 @@ type ThoughtDetail struct {
 	Source         string
 	RawMetadata    []byte
 }
+
+// BrowseFilter captures every query parameter the browse page accepts.
+// Zero values mean "no filter on this field". Days == 0 means all time.
+type BrowseFilter struct {
+	Type   string
+	Topic  string
+	Person string
+	Q      string
+	Days   int
+}
+
+// Active reports whether any filter is currently applied. The template uses
+// this to decide whether to show the "clear filters" link.
+func (f BrowseFilter) Active() bool {
+	return f.Type != "" || f.Topic != "" || f.Person != "" || f.Q != "" || f.Days > 0
+}
+
+// BrowseData is the payload the browse page renders — the filtered result
+// set plus pagination metadata and the filter struct echoed back so the
+// form can preselect its current values.
+type BrowseData struct {
+	Filter     BrowseFilter
+	Results    []ThoughtData
+	Total      int64
+	Page       int
+	PerPage    int
+	TotalPages int
+}

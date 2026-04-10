@@ -27,6 +27,7 @@ func NewServer(db *DB, ollama *OllamaClient) *Server {
 	s.router.Use(middleware.Recoverer)
 
 	s.router.Get("/", s.handleHome)
+	s.router.Get("/browse", s.handleBrowse)
 	s.router.Get("/thought/{id}", s.handleDetail)
 
 	// Static files (tokens.css, app.css, vendor/htmx.min.js, ...) served flat
@@ -48,6 +49,35 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := templates.Home(*data).Render(r.Context(), w); err != nil {
+		http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	f := templates.BrowseFilter{
+		Type:   q.Get("type"),
+		Topic:  q.Get("topic"),
+		Person: q.Get("person"),
+		Q:      q.Get("q"),
+	}
+	if daysStr := q.Get("days"); daysStr != "" {
+		if d, err := strconv.Atoi(daysStr); err == nil && d > 0 && d <= 3650 {
+			f.Days = d
+		}
+	}
+	page := 1
+	if pageStr := q.Get("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+	data, err := s.db.Browse(r.Context(), f, page)
+	if err != nil {
+		http.Error(w, "browse: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := templates.Browse(*data).Render(r.Context(), w); err != nil {
 		http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
 	}
 }

@@ -11,6 +11,7 @@ templ Detail(t ThoughtDetail) {
 			<h1 class="app-title">Open Brain</h1>
 			<nav class="app-nav">
 				<a href="/">Home</a>
+				<a href="/browse">Browse</a>
 			</nav>
 		</header>
 		<main class="app-main">
@@ -36,10 +37,10 @@ templ Detail(t ThoughtDetail) {
 					<section class="detail-section">
 						<div class="detail-tags">
 							for _, topic := range t.Topics {
-								<span class="topic-tag">{ topic }</span>
+								<a class="topic-tag topic-tag--link" href={ templ.SafeURL(TopicURL(topic)) }>{ topic }</a>
 							}
 							for _, person := range t.People {
-								<span class="person-tag">{ person }</span>
+								<a class="person-tag person-tag--link" href={ templ.SafeURL(PersonURL(person)) }>{ person }</a>
 							}
 						</div>
 					</section>

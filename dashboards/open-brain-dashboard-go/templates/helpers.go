@@ -2,6 +2,8 @@ package templates
 
 import (
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -57,4 +59,61 @@ func TypeClass(typ string) string {
 // directly but this keeps intent explicit at call sites.
 func ItoA64(n int64) string {
 	return fmt.Sprintf("%d", n)
+}
+
+// ItoA formats an int for template output.
+func ItoA(n int) string {
+	return strconv.Itoa(n)
+}
+
+// BrowseURL builds a /browse?... URL from a filter plus target page. Empty
+// filter fields are omitted; page == 1 is omitted (that's the default).
+// This is the single source of truth for the browse URL shape, used by the
+// filter form's "clear filters" link, the pagination prev/next, the type
+// chip row in the filter, and the topic/person tag anchors on the detail
+// page.
+func BrowseURL(f BrowseFilter, page int) string {
+	q := url.Values{}
+	if f.Type != "" {
+		q.Set("type", f.Type)
+	}
+	if f.Topic != "" {
+		q.Set("topic", f.Topic)
+	}
+	if f.Person != "" {
+		q.Set("person", f.Person)
+	}
+	if f.Q != "" {
+		q.Set("q", f.Q)
+	}
+	if f.Days > 0 {
+		q.Set("days", strconv.Itoa(f.Days))
+	}
+	if page > 1 {
+		q.Set("page", strconv.Itoa(page))
+	}
+	if len(q) == 0 {
+		return "/browse"
+	}
+	return "/browse?" + q.Encode()
+}
+
+// TypeChipURL returns a /browse URL that sets the type filter to `typ`
+// (or clears it when typ == ""), preserving all other filters but resetting
+// page to 1 since the result set changes.
+func TypeChipURL(f BrowseFilter, typ string) string {
+	f.Type = typ
+	return BrowseURL(f, 1)
+}
+
+// TopicURL returns a /browse URL filtered to a specific topic. Used by the
+// clickable topic tags on the detail page.
+func TopicURL(topic string) string {
+	return BrowseURL(BrowseFilter{Topic: topic}, 1)
+}
+
+// PersonURL returns a /browse URL filtered to a specific person. Used by
+// the clickable person tags on the detail page.
+func PersonURL(person string) string {
+	return BrowseURL(BrowseFilter{Person: person}, 1)
 }
