@@ -63,23 +63,7 @@ templ Home(data HomeData) {
 				} else {
 					<ul class="thought-list">
 						for _, t := range data.Recent {
-							<li class="thought-item">
-								<div class="thought-meta">
-									<span class={ TypeClass(t.Type) }>{ t.Type }</span>
-									<time class="thought-time">{ HumanTime(t.CreatedAt) }</time>
-								</div>
-								<p class="thought-content">{ Truncate(t.Content, 240) }</p>
-								if len(t.Topics) > 0 || len(t.People) > 0 {
-									<div class="thought-tags">
-										for _, topic := range t.Topics {
-											<span class="topic-tag">{ topic }</span>
-										}
-										for _, person := range t.People {
-											<span class="person-tag">{ person }</span>
-										}
-									</div>
-								}
-							</li>
+							@ThoughtCard(t)
 						}
 					</ul>
 				}

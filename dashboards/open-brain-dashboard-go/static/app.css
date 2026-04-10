@@ -299,3 +299,215 @@ a:hover {
 	color: var(--accent);
 	border-color: rgba(88, 166, 255, 0.3);
 }
+
+/* --------------------------------------------------------------- card link wrapper */
+
+.thought-card-link {
+	color: inherit;
+	text-decoration: none;
+	display: block;
+}
+
+.thought-card-link:hover .thought-item {
+	border-color: var(--accent);
+	background: var(--bg-raised);
+}
+
+.thought-card-link:hover {
+	text-decoration: none;
+}
+
+/* --------------------------------------------------------------- detail page */
+
+.back-link {
+	display: inline-block;
+	margin-bottom: var(--space-4);
+	color: var(--fg-muted);
+	font-size: 0.9rem;
+}
+
+.back-link:hover {
+	color: var(--accent);
+	text-decoration: none;
+}
+
+.detail {
+	background: var(--bg-elevated);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg);
+	padding: var(--space-6);
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-5);
+}
+
+.detail-header {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding-bottom: var(--space-4);
+	border-bottom: 1px solid var(--border-muted);
+}
+
+.detail-meta {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex-wrap: wrap;
+}
+
+.detail-id {
+	font-family: var(--font-mono);
+	font-size: 0.85rem;
+	color: var(--fg-muted);
+}
+
+.detail-time {
+	font-size: 0.85rem;
+	color: var(--fg-muted);
+}
+
+.detail-source {
+	font-size: 0.75rem;
+	color: var(--fg-subtle);
+	padding: 1px var(--space-2);
+	border: 1px solid var(--border-muted);
+	border-radius: var(--radius);
+	text-transform: lowercase;
+}
+
+.detail-content {
+	font-size: 1rem;
+	line-height: 1.7;
+	color: var(--fg);
+	white-space: pre-wrap;
+	word-wrap: break-word;
+}
+
+.detail-section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+}
+
+.detail-heading {
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	color: var(--fg-muted);
+	font-weight: 600;
+}
+
+.detail-tags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+
+/* action items */
+
+.action-list {
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+}
+
+.action-item {
+	display: flex;
+	align-items: baseline;
+	gap: var(--space-3);
+	padding: var(--space-3);
+	background: var(--bg-raised);
+	border: 1px solid var(--border-muted);
+	border-radius: var(--radius);
+}
+
+.action-desc {
+	color: var(--fg);
+	line-height: 1.5;
+	flex: 1;
+}
+
+.priority-chip {
+	display: inline-block;
+	padding: 2px var(--space-2);
+	border-radius: var(--radius);
+	font-size: 0.7rem;
+	font-weight: 600;
+	text-transform: lowercase;
+	letter-spacing: 0.02em;
+	border: 1px solid transparent;
+	line-height: 1.4;
+	flex-shrink: 0;
+}
+
+.priority-high {
+	background: rgba(248, 81, 73, 0.15);
+	color: #ff7b72;
+	border-color: rgba(248, 81, 73, 0.35);
+}
+
+.priority-medium {
+	background: rgba(210, 153, 34, 0.15);
+	color: #e3b341;
+	border-color: rgba(210, 153, 34, 0.35);
+}
+
+.priority-low {
+	background: rgba(139, 148, 158, 0.15);
+	color: var(--fg-muted);
+	border-color: var(--border);
+}
+
+/* dates mentioned */
+
+.detail-dates {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--space-2);
+}
+
+.date-chip {
+	display: inline-block;
+	padding: 2px var(--space-2);
+	border-radius: var(--radius);
+	font-size: 0.75rem;
+	font-family: var(--font-mono);
+	background: var(--bg-raised);
+	color: var(--fg-muted);
+	border: 1px solid var(--border-muted);
+}
+
+/* raw metadata disclosure */
+
+.detail-raw {
+	border-top: 1px solid var(--border-muted);
+	padding-top: var(--space-4);
+}
+
+.detail-raw summary {
+	cursor: pointer;
+	color: var(--fg-muted);
+	font-size: 0.8rem;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	user-select: none;
+}
+
+.detail-raw summary:hover {
+	color: var(--accent);
+}
+
+.detail-raw pre {
+	margin-top: var(--space-3);
+	padding: var(--space-4);
+	background: var(--bg);
+	border: 1px solid var(--border-muted);
+	border-radius: var(--radius);
+	font-family: var(--font-mono);
+	font-size: 0.8rem;
+	color: var(--fg-muted);
+	overflow-x: auto;
+	line-height: 1.5;
+}

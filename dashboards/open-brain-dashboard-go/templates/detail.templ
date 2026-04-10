@@ -1,0 +1,84 @@
+package templates
+
+import (
+	"fmt"
+	"strings"
+)
+
+templ Detail(t ThoughtDetail) {
+	@Layout(fmt.Sprintf("Thought #%d — Open Brain", t.ID)) {
+		<header class="app-header">
+			<h1 class="app-title">Open Brain</h1>
+			<nav class="app-nav">
+				<a href="/">Home</a>
+			</nav>
+		</header>
+		<main class="app-main">
+			<a class="back-link" href="/">← back to home</a>
+
+			<article class="detail">
+				<header class="detail-header">
+					<div class="detail-meta">
+						<span class={ TypeClass(t.Type) }>{ t.Type }</span>
+						<span class="detail-id">#{ ItoA64(t.ID) }</span>
+						<time class="detail-time">{ t.CreatedAt.Format("Jan 2, 2006 at 15:04 MST") }</time>
+						if t.Source != "" {
+							<span class="detail-source">via { t.Source }</span>
+						}
+					</div>
+				</header>
+
+				<div class="detail-content">
+					{ t.Content }
+				</div>
+
+				if len(t.Topics) > 0 || len(t.People) > 0 {
+					<section class="detail-section">
+						<div class="detail-tags">
+							for _, topic := range t.Topics {
+								<span class="topic-tag">{ topic }</span>
+							}
+							for _, person := range t.People {
+								<span class="person-tag">{ person }</span>
+							}
+						</div>
+					</section>
+				}
+
+				if len(t.ActionItems) > 0 {
+					<section class="detail-section">
+						<h2 class="detail-heading">action items</h2>
+						<ul class="action-list">
+							for _, ai := range t.ActionItems {
+								<li class="action-item">
+									if ai.Priority != "" {
+										<span class={ "priority-chip priority-" + strings.ToLower(ai.Priority) }>
+											{ ai.Priority }
+										</span>
+									}
+									<span class="action-desc">{ ai.Description }</span>
+								</li>
+							}
+						</ul>
+					</section>
+				}
+
+				if len(t.DatesMentioned) > 0 {
+					<section class="detail-section">
+						<h2 class="detail-heading">dates mentioned</h2>
+						<div class="detail-dates">
+							for _, d := range t.DatesMentioned {
+								<span class="date-chip">{ d }</span>
+							}
+						</div>
+					</section>
+				}
+
+				<details class="detail-raw">
+					<summary>raw metadata</summary>
+					<pre>{ string(t.RawMetadata) }</pre>
+				</details>
+			</article>
+		</main>
+	}
+}

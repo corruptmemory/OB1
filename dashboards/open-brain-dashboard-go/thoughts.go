@@ -116,3 +116,47 @@ func (d *DB) HomeData(ctx context.Context) (*templates.HomeData, error) {
 
 	return hd, nil
 }
+
+// ThoughtByID fetches a single thought and its full metadata for the detail
+// page. Returns pgx.ErrNoRows unchanged when the id doesn't exist so the
+// handler can branch to a 404 via errors.Is.
+func (d *DB) ThoughtByID(ctx context.Context, id int64) (*templates.ThoughtDetail, error) {
+	var (
+		detail templates.ThoughtDetail
+		meta   []byte
+	)
+	err := d.pool.QueryRow(ctx, `
+		SELECT id, content, metadata, created_at
+		FROM thoughts
+		WHERE id = $1
+	`, id).Scan(&detail.ID, &detail.Content, &meta, &detail.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	detail.RawMetadata = meta
+
+	// All metadata fields are best-effort — missing keys and shape
+	// mismatches (action_items can be strings or objects) are handled by
+	// ActionItem.UnmarshalJSON and the jsonb_typeof guards in the SQL.
+	var m struct {
+		Type           string              `json:"type"`
+		Topics         []string            `json:"topics"`
+		People         []string            `json:"people"`
+		ActionItems    []templates.ActionItem `json:"action_items"`
+		DatesMentioned []string            `json:"dates_mentioned"`
+		Source         string              `json:"source"`
+	}
+	_ = json.Unmarshal(meta, &m)
+	if m.Type == "" {
+		m.Type = "unknown"
+	}
+	detail.Type = m.Type
+	detail.Topics = m.Topics
+	detail.People = m.People
+	detail.ActionItems = m.ActionItems
+	detail.DatesMentioned = m.DatesMentioned
+	detail.Source = m.Source
+
+	return &detail, nil
+}
