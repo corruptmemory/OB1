@@ -109,12 +109,13 @@ Plain-text skill packs you can drop into Claude Code, Codex, or other AI clients
 
 ### [`/dashboards`](dashboards/) — Frontend Templates
 
-Host on Vercel or Netlify, pointed at your Supabase backend. Two community-built options — pick the framework you prefer.
+Three community-built options — pick the deployment model you prefer. Two target hosted Supabase on Vercel/Netlify; one is a single static Go binary for fully self-hosted stacks.
 
 | Dashboard | What It Does | Contributor |
 | --------- | ------------ | ----------- |
 | [Open Brain Dashboard](dashboards/open-brain-dashboard/) | SvelteKit dashboard with MCP proxy and Supabase auth | [@headcrest](https://github.com/headcrest) |
 | [Open Brain Dashboard (Next.js)](dashboards/open-brain-dashboard-next/) | Full-featured Next.js dashboard — 8 pages, dark theme, smart ingest, quality auditing | [@alanshurafa](https://github.com/alanshurafa) |
+| [Open Brain Dashboard (Go)](dashboards/open-brain-dashboard-go/) | Single static Go binary (chi + templ + htmx + pgx) for self-hosted stacks — talks directly to Postgres + Ollama, no Node.js, pairs with the Docker Compose integration | [@corruptmemory](https://github.com/corruptmemory) |
 
 ### [`/integrations`](integrations/) — New Connections
 
