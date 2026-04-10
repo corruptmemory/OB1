@@ -66,10 +66,17 @@ services:
       CHAT_API_KEY: ollama-local-no-auth
       CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:3b}
     ports:
-      # LAN + tailnet visible so Claude Desktop / Claude Code on other
-      # machines can reach the MCP endpoint. Authenticated via x-brain-key
-      # header checked against MCP_ACCESS_KEY.
-      - "0.0.0.0:8000:8000"
+      # Localhost-only by default — external access is expected to go through
+      # a reverse proxy (Caddy, nginx, Traefik) running on the host, which can
+      # add TLS, hostname-based routing, and additional auth layers. The
+      # x-brain-key header in the MCP server is still enforced as a second
+      # line of defense.
+      #
+      # If you want direct LAN access to port 8000 without a reverse proxy,
+      # change this to "0.0.0.0:8000:8000". The MCP server's own auth
+      # (x-brain-key) is sufficient for a trusted LAN, but using a reverse
+      # proxy is better defense-in-depth.
+      - "127.0.0.1:8000:8000"
     depends_on:
       - db
       - ollama

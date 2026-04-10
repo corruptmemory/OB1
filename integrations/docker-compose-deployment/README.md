@@ -12,7 +12,7 @@ Three containers on an internal `open-brain` network:
 | --- | --- | --- | --- |
 | `open-brain-db` | `ankane/pgvector:v0.5.1` | PostgreSQL 16 + pgvector, bootstrapped from `init.sql` on first start | `5432` (LAN-visible) |
 | `open-brain-ollama` | `ollama/ollama:latest` | Local Ollama serving embedding and chat models via the OpenAI-compatible `/v1` API | not published (internal only) |
-| `open-brain-mcp` | built from `Dockerfile` | Deno + Hono MCP server exposing four tools over authenticated HTTP | `8000` (LAN-visible) |
+| `open-brain-mcp` | built from `Dockerfile` | Deno + Hono MCP server exposing four tools over authenticated HTTP | `8000` (localhost only — front with a reverse proxy for LAN access) |
 
 The MCP server reaches Ollama over the internal Docker network at `http://ollama:11434/v1` using the standard OpenAI request shape. The `Dockerfile` and `deno.json` are unmodified copies from the Kubernetes integration — this deployment differs in three places: the data-plane wiring (compose instead of k8s manifests), the choice of embedding model (`mxbai-embed-large`, 1024-dim, open-weight) instead of OpenAI's `text-embedding-3-small`, and a small `index.ts` patch (see "Divergence from the Kubernetes integration" below).
 
@@ -85,18 +85,34 @@ The last command should return a JSON-RPC response listing `search_thoughts`, `l
 
 First-time model downloads take a few minutes depending on your connection. Subsequent `docker compose up -d` calls are fast because the bind mount at `./data/ollama` preserves the model files.
 
+## Exposing the MCP server to other hosts
+
+The default `docker-compose.yml` binds the MCP server to **`127.0.0.1:8000`** — it's reachable from the host it runs on, but **not** from other machines on your network. This is the secure default. Before external clients (Claude Desktop on another computer, Claude Code on a laptop, etc.) can reach it, you need one of these:
+
+**Option A (recommended): Front it with a reverse proxy on the host.** The host presumably already runs a reverse proxy like Caddy, nginx, or Traefik if it hosts any other services. Add a hostname-based route that forwards to `localhost:8000`. Example Caddyfile block:
+
+```caddyfile
+open-brain:80 {
+    reverse_proxy localhost:8000
+}
+```
+
+Then set up DNS so `open-brain` resolves to the host, and clients can use `http://open-brain/` as the endpoint. The reverse proxy handles port-multiplexing (multiple services on one port), optional TLS, and any additional access-control layers. The MCP server's own `x-brain-key` check remains as a second line of defense.
+
+**Option B (simpler, less defense-in-depth): Bind the container directly to the LAN.** Change the port line in `docker-compose.yml` from `"127.0.0.1:8000:8000"` to `"0.0.0.0:8000:8000"` and `docker compose up -d mcp-server`. Clients then reach it directly at `http://<host>:8000/`. The `x-brain-key` header is the only thing between a LAN attacker and your MCP endpoint; this is fine on a trusted home network but worse than a reverse proxy with additional auth layers.
+
 ## Connecting MCP clients
+
+The examples below assume you're using Option A with a reverse proxy front door at `http://open-brain/`. Substitute `http://<host>:8000/` if you're using Option B.
 
 ### Claude Desktop
 
-Settings → Connectors → Add custom connector → paste `http://<host>:8000` as the URL, then add a custom header with key `x-brain-key` and the value of `MCP_ACCESS_KEY` from `.env`. The four tools show up in the tool list on the next chat restart.
-
-Replace `<host>` with whatever your client can resolve: `localhost` if Claude Desktop is running on the same host as the stack, an IP address, or a local DNS name you've configured for the host.
+Settings → Connectors → Add custom connector → paste the URL, then add a custom header with key `x-brain-key` and the value of `MCP_ACCESS_KEY` from `.env`. The four tools show up in the tool list on the next chat restart.
 
 ### Claude Code
 
 ```bash
-claude mcp add open-brain --transport http http://<host>:8000 \
+claude mcp add open-brain --transport http http://open-brain/ \
   --header "x-brain-key: $(grep '^MCP_ACCESS_KEY=' .env | cut -d= -f2-)"
 ```
 
