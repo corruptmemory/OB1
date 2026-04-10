@@ -431,12 +431,17 @@ func (d *DB) CreateThought(ctx context.Context, in CreateThoughtInput) (int64, e
 // UpdateThoughtInput is the set of editable fields carried from the edit
 // form's POST body through to the SQL update. Embedding is optional — nil
 // means "content didn't change, preserve the existing embedding unchanged."
+// ActionItems is always written as the always-object shape
+// [{description, priority}, ...], regardless of whether the existing row
+// used the string-array shape. This is a per-thought forward migration on
+// first edit.
 type UpdateThoughtInput struct {
-	Content   string
-	Type      string
-	Topics    []string
-	People    []string
-	Embedding []float32
+	Content     string
+	Type        string
+	Topics      []string
+	People      []string
+	ActionItems []templates.ActionItem
+	Embedding   []float32
 }
 
 // UpdateThought writes the edit-form values back to a single row. Type,
@@ -450,10 +455,11 @@ func (d *DB) UpdateThought(ctx context.Context, id int64, in UpdateThoughtInput)
 	// level with the right side winning, which is exactly the semantics we
 	// want: metadata || {"type": "idea", ...} leaves everything else alone.
 	patch := map[string]any{
-		"type":       in.Type,
-		"topics":     in.Topics,
-		"people":     in.People,
-		"updated_at": time.Now().UTC().Format(time.RFC3339),
+		"type":         in.Type,
+		"topics":       in.Topics,
+		"people":       in.People,
+		"action_items": in.ActionItems,
+		"updated_at":   time.Now().UTC().Format(time.RFC3339),
 	}
 	// JSON nil slices become "null" which overwrites as null in jsonb; force
 	// empty arrays so the metadata shape stays consistent with captures.
@@ -462,6 +468,9 @@ func (d *DB) UpdateThought(ctx context.Context, id int64, in UpdateThoughtInput)
 	}
 	if in.People == nil {
 		patch["people"] = []string{}
+	}
+	if in.ActionItems == nil {
+		patch["action_items"] = []templates.ActionItem{}
 	}
 	patchJSON, err := json.Marshal(patch)
 	if err != nil {

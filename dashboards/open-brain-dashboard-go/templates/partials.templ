@@ -1,0 +1,49 @@
+package templates
+
+// ActionItemRow renders a single editable row for the action-items section
+// of the edit form. Used both by the initial edit-page render (once per
+// existing action item) and by the GET /partials/action-item-row endpoint
+// that htmx appends when the user clicks "+ add action item".
+//
+// Form encoding is parallel arrays: action_item_description and
+// action_item_priority. The server-side handler in server.go pairs them
+// by DOM order and drops any row with an empty description.
+templ ActionItemRow(item ActionItem) {
+	<li class="action-item-row">
+		<input
+			type="text"
+			name="action_item_description"
+			value={ item.Description }
+			class="edit-input action-item-desc"
+			placeholder="what needs to happen?"
+		/>
+		<select name="action_item_priority" class="edit-select action-item-priority">
+			if item.Priority == "" {
+				<option value="" selected>—</option>
+			} else {
+				<option value="">—</option>
+			}
+			if item.Priority == "high" {
+				<option value="high" selected>high</option>
+			} else {
+				<option value="high">high</option>
+			}
+			if item.Priority == "medium" {
+				<option value="medium" selected>medium</option>
+			} else {
+				<option value="medium">medium</option>
+			}
+			if item.Priority == "low" {
+				<option value="low" selected>low</option>
+			} else {
+				<option value="low">low</option>
+			}
+		</select>
+		<button
+			type="button"
+			class="action-item-remove"
+			onclick="this.closest('.action-item-row').remove();"
+			title="remove this action item"
+		>×</button>
+	</li>
+}

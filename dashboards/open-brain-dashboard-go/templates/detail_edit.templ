@@ -79,6 +79,22 @@ templ DetailEdit(data EditFormData) {
 						<input type="text" name="people" value={ data.PeopleInput } class="edit-input"/>
 					</label>
 
+					<div class="edit-field">
+						<span class="edit-label">action items</span>
+						<ul id="action-items-list" class="action-items-list">
+							for _, item := range data.Thought.ActionItems {
+								@ActionItemRow(item)
+							}
+						</ul>
+						<button
+							type="button"
+							class="action-item-add"
+							hx-get="/partials/action-item-row"
+							hx-target="#action-items-list"
+							hx-swap="beforeend"
+						>+ add action item</button>
+					</div>
+
 					<div class="edit-actions">
 						<button type="submit" class="edit-save">save changes</button>
 						<a href={ templ.SafeURL(fmt.Sprintf("/thought/%d", data.Thought.ID)) } class="edit-cancel">cancel</a>

@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -35,6 +36,7 @@ func NewServer(db *DB, ollama *OllamaClient) *Server {
 	s.router.Get("/thought/{id}/edit", s.handleEditForm)
 	s.router.Post("/thought/{id}/edit", s.handleUpdate)
 	s.router.Post("/thought/{id}/delete", s.handleDelete)
+	s.router.Get("/partials/action-item-row", s.handleActionItemRow)
 
 	// Static files (tokens.css, app.css, vendor/htmx.min.js, ...) served flat
 	// under /static/ to match the thought-store convention.
@@ -234,6 +236,29 @@ func parseCSVField(raw string) []string {
 	return out
 }
 
+// parseActionItems pulls the parallel action_item_description /
+// action_item_priority arrays out of a parsed form and pairs them by
+// index, dropping any row with an empty description. Returns an empty
+// (non-nil) slice when no action items were submitted so the metadata
+// jsonb patch writes an explicit empty array rather than null.
+func parseActionItems(form url.Values) []templates.ActionItem {
+	descriptions := form["action_item_description"]
+	priorities := form["action_item_priority"]
+	out := []templates.ActionItem{}
+	for i, d := range descriptions {
+		d = strings.TrimSpace(d)
+		if d == "" {
+			continue
+		}
+		p := ""
+		if i < len(priorities) {
+			p = strings.TrimSpace(priorities[i])
+		}
+		out = append(out, templates.ActionItem{Description: d, Priority: p})
+	}
+	return out
+}
+
 func (s *Server) handleEditForm(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseIDParam(w, r)
 	if !ok {
@@ -284,10 +309,16 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	typ := strings.TrimSpace(r.FormValue("type"))
 	topicsRaw := r.FormValue("topics")
 	peopleRaw := r.FormValue("people")
+	actionItems := parseActionItems(r.Form)
 
 	renderEditError := func(msg string) {
+		// Echo the user-edited thought back with ActionItems updated from
+		// the POST body so the re-rendered form shows what they just
+		// typed, not the pre-edit state.
+		echo := *existing
+		echo.ActionItems = actionItems
 		data := templates.EditFormData{
-			Thought:      *existing,
+			Thought:      echo,
 			Error:        msg,
 			ContentInput: content,
 			TypeInput:    typ,
@@ -304,10 +335,11 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	input := UpdateThoughtInput{
-		Content: content,
-		Type:    typ,
-		Topics:  parseCSVField(topicsRaw),
-		People:  parseCSVField(peopleRaw),
+		Content:     content,
+		Type:        typ,
+		Topics:      parseCSVField(topicsRaw),
+		People:      parseCSVField(peopleRaw),
+		ActionItems: actionItems,
 	}
 
 	// Re-embed only when content actually changed. Metadata-only edits
@@ -332,6 +364,16 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/thought/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+// handleActionItemRow returns a single blank ActionItemRow HTML fragment
+// used by htmx to append a new row to the action-items section of the
+// edit form. No layout wrapper — the response is swapped into an existing
+// list via hx-swap="beforeend".
+func (s *Server) handleActionItemRow(w http.ResponseWriter, r *http.Request) {
+	if err := templates.ActionItemRow(templates.ActionItem{}).Render(r.Context(), w); err != nil {
+		http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {

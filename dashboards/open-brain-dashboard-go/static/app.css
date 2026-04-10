@@ -1048,6 +1048,69 @@ a:hover {
 	font-size: 0.9rem;
 }
 
+.action-items-list {
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-2);
+	margin: 0;
+	padding: 0;
+}
+
+.action-item-row {
+	display: flex;
+	gap: var(--space-2);
+	align-items: center;
+}
+
+.action-item-desc {
+	flex: 1;
+	min-width: 0;
+}
+
+.action-item-priority {
+	width: 110px;
+	flex-shrink: 0;
+}
+
+.action-item-remove {
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--bg-raised);
+	color: var(--fg-muted);
+	font-size: 1.1rem;
+	line-height: 1;
+	cursor: pointer;
+	flex-shrink: 0;
+}
+
+.action-item-remove:hover {
+	border-color: var(--danger);
+	color: var(--danger);
+	background: rgba(248, 81, 73, 0.08);
+}
+
+.action-item-add {
+	align-self: flex-start;
+	margin-top: var(--space-2);
+	padding: var(--space-2) var(--space-3);
+	border: 1px dashed var(--border);
+	border-radius: var(--radius);
+	background: transparent;
+	color: var(--fg-muted);
+	font-family: var(--font-sans);
+	font-size: 0.85rem;
+	cursor: pointer;
+}
+
+.action-item-add:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+
 .edit-actions {
 	display: flex;
 	gap: var(--space-3);
