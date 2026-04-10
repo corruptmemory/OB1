@@ -2,6 +2,7 @@ node_modules/
 .DS_Store
 .planning/
 supabase/
+.claude/settings.local.json
 
 # Credentials & runtime state
 .env
