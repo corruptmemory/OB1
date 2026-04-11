@@ -206,6 +206,17 @@ type ListData struct {
 	OllamaStatus string
 }
 
+// ComposeDraft carries pre-filled form values and an error message
+// for re-rendering the compose panel when capture fails. Used by
+// handleCapture's error branch so the user's typed input survives.
+type ComposeDraft struct {
+	Content string
+	Type    string
+	Topics  string
+	People  string
+	Error   string
+}
+
 // SidebarData is the view-model for sidebar.templ. Bundles counts
 // from the DB with the currently-active filter so the template can
 // highlight active chips.

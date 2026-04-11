@@ -73,3 +73,32 @@ document.body.addEventListener("focus-thought", function (e) {
 // in Task 9). This no-op exists to avoid a console warning if htmx
 // ever bubbles the event through body.
 document.body.addEventListener("refresh-row", function () {});
+
+// Backdrop click in modal mode contracts to compact rather than
+// closing, so the user's draft survives an accidental click outside
+// the dialog. Only fires in modal mode; compact mode has no backdrop.
+document.addEventListener("click", function (e) {
+	const d = document.getElementById("compose-dialog");
+	if (!d || !d.open) return;
+	if (!d.classList.contains("compose-modal")) return;
+	// A click directly on the dialog element (not a child) means the
+	// user hit the backdrop. Children bubble their target up.
+	if (e.target === d) {
+		obComposeContract();
+	}
+});
+
+// Esc in modal mode contracts to compact (preserves draft). Esc in
+// compact mode minimizes to the title bar. Neither closes the
+// dialog — close is explicit via the × button.
+document.addEventListener("keydown", function (e) {
+	if (e.key !== "Escape") return;
+	const d = document.getElementById("compose-dialog");
+	if (!d || !d.open) return;
+	e.preventDefault();
+	if (d.classList.contains("compose-modal")) {
+		obComposeContract();
+	} else {
+		d.classList.toggle("compose-minimized");
+	}
+});

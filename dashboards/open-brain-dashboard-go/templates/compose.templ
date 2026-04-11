@@ -51,3 +51,65 @@ templ Compose() {
 		</form>
 	</dialog>
 }
+
+// ComposeWithDraft renders the compose panel with pre-filled form
+// values and an error banner. Used to re-render after a failed
+// capture attempt (parse form, empty content, embed failure, DB
+// insert failure) so the user doesn't lose their draft. Class
+// conventions match Compose() exactly — only the pre-fill values
+// and the error banner differ.
+templ ComposeWithDraft(d ComposeDraft) {
+	<dialog class="compose-dialog" id="compose-dialog" open>
+		<div class="compose-header">
+			<span class="compose-title">New thought</span>
+			<div class="compose-controls">
+				<button type="button" class="btn-icon" onclick="obComposeExpand()" title="Expand">↕</button>
+				<button type="button" class="btn-icon" onclick="obComposeMinimize()" title="Minimize">–</button>
+				<button type="button" class="btn-icon"
+					hx-delete="/partials/compose"
+					hx-target="#compose-slot"
+					hx-swap="innerHTML"
+					title="Close">×</button>
+			</div>
+		</div>
+		<form class="compose-form"
+			action="/capture"
+			method="POST"
+			hx-post="/capture"
+			hx-target="#compose-slot"
+			hx-swap="innerHTML"
+		>
+			if d.Error != "" {
+				<div class="form-error">{ d.Error }</div>
+			}
+			<textarea name="content" class="edit-textarea" rows="10" placeholder="Capture a thought…" required>{ d.Content }</textarea>
+			<div class="edit-row">
+				<select name="type" class="edit-select">
+					@draftTypeOption("observation", d.Type)
+					@draftTypeOption("task", d.Type)
+					@draftTypeOption("idea", d.Type)
+					@draftTypeOption("reference", d.Type)
+					@draftTypeOption("person_note", d.Type)
+				</select>
+			</div>
+			<input type="text" name="topics" class="edit-input" value={ d.Topics } placeholder="topics (comma-separated)"/>
+			<input type="text" name="people" class="edit-input" value={ d.People } placeholder="people (comma-separated)"/>
+			<div class="edit-actions">
+				<button type="submit" class="btn-primary">Save</button>
+				<button type="button" class="btn-secondary"
+					hx-delete="/partials/compose"
+					hx-target="#compose-slot"
+					hx-swap="innerHTML"
+				>Cancel</button>
+			</div>
+		</form>
+	</dialog>
+}
+
+templ draftTypeOption(value, current string) {
+	if value == current {
+		<option value={ value } selected>{ value }</option>
+	} else {
+		<option value={ value }>{ value }</option>
+	}
+}

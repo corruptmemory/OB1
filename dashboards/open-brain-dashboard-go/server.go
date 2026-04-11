@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"html"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -401,7 +400,7 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 
 	if err := r.ParseForm(); err != nil {
 		if isHTMX {
-			writeComposeError(w, "parse form: "+err.Error())
+			s.writeComposeDraftError(w, r, "parse form: "+err.Error())
 			return
 		}
 		http.Error(w, "parse form: "+err.Error(), http.StatusBadRequest)
@@ -412,7 +411,7 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 	typ := strings.TrimSpace(r.FormValue("type"))
 	if content == "" {
 		if isHTMX {
-			writeComposeError(w, "content cannot be empty")
+			s.writeComposeDraftError(w, r, "content cannot be empty")
 			return
 		}
 		http.Error(w, "content cannot be empty", http.StatusBadRequest)
@@ -425,7 +424,7 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 	embedding, err := s.ollama.Embed(r.Context(), content)
 	if err != nil {
 		if isHTMX {
-			writeComposeError(w, "embed failed: "+err.Error()+" (Ollama unreachable? try again in a moment)")
+			s.writeComposeDraftError(w, r, "embed failed: "+err.Error()+" (Ollama unreachable? try again in a moment)")
 			return
 		}
 		http.Error(w, "embed failed: "+err.Error()+" (Ollama unreachable? try again in a moment)", http.StatusServiceUnavailable)
@@ -441,7 +440,7 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if isHTMX {
-			writeComposeError(w, "create: "+err.Error())
+			s.writeComposeDraftError(w, r, "create: "+err.Error())
 			return
 		}
 		http.Error(w, "create: "+err.Error(), http.StatusInternalServerError)
@@ -461,22 +460,23 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/thought/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
 }
 
-// writeComposeError renders a minimal error fragment into #compose-slot
-// so the user sees what went wrong without losing the dialog chrome.
-// Task 10b replaces this with a ComposeWithDraft template that also
-// preserves the form fields.
-func writeComposeError(w http.ResponseWriter, msg string) {
+// writeComposeDraftError re-renders the compose panel via the
+// ComposeWithDraft template, echoing the user's typed values back
+// into the form and prepending an error banner. Task 10b replaces
+// the inline HTML error fragment from Task 10 so an embed or DB
+// failure no longer wipes the draft.
+func (s *Server) writeComposeDraftError(w http.ResponseWriter, r *http.Request, msg string) {
+	draft := templates.ComposeDraft{
+		Content: r.FormValue("content"),
+		Type:    r.FormValue("type"),
+		Topics:  r.FormValue("topics"),
+		People:  r.FormValue("people"),
+		Error:   msg,
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w,
-		`<dialog class="compose-dialog" id="compose-dialog" open>`+
-			`<div class="compose-header"><span class="compose-title">Error</span>`+
-			`<div class="compose-controls">`+
-			`<button type="button" class="btn-icon" hx-delete="/partials/compose" hx-target="#compose-slot" hx-swap="innerHTML" title="Close">×</button>`+
-			`</div></div>`+
-			`<div class="compose-form"><div class="form-error">%s</div></div>`+
-			`</dialog>`,
-		html.EscapeString(msg),
-	)
+	if err := templates.ComposeWithDraft(draft).Render(r.Context(), w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (s *Server) handlePartialCompose(w http.ResponseWriter, r *http.Request) {
