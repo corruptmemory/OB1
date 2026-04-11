@@ -546,10 +546,14 @@ type ListResult struct {
 }
 
 // Search is the one list-pane query entry point for the v1.5 handler.
-// It combines filters with optional semantic ranking, and automatically
-// falls back to ILIKE substring search if:
+// It combines filters with optional semantic ranking and automatically
+// falls back to ILIKE substring search when:
 //   - the caller passed a nil embedding (Ollama down), or
-//   - semantic ranking returned zero results above threshold
+//   - the semantic query returned zero rows (happens only when the
+//     non-Q filters exclude every row with a non-null embedding;
+//     pgvector itself has no threshold applied yet, so this fallback
+//     path is rare in practice and will become more meaningful if a
+//     similarity cutoff is introduced).
 //
 // The caller is responsible for calling ollama.Embed separately and
 // passing the result (nil on failure). This keeps thoughts.go free of
@@ -558,6 +562,11 @@ type ListResult struct {
 // Preconditions:
 //   - If embedding is non-nil, filters.Q must also be non-empty.
 //     (Enforces the buildListQuery withVector contract.)
+//
+// Cost note: the fallback path runs a second (count, list) query pair
+// when it fires. Given how rare the fallback currently is, this is
+// acceptable; if a similarity threshold is added later and fallback
+// becomes hot, revisit.
 func (d *DB) Search(ctx context.Context, f ListFilters, embedding []float32) (*ListResult, error) {
 	// Path 1: no query, pure filter list.
 	if f.Q == "" {
@@ -573,7 +582,7 @@ func (d *DB) Search(ctx context.Context, f ListFilters, embedding []float32) (*L
 		if result.Total > 0 {
 			return result, nil
 		}
-		// Fall through: semantic returned zero matches above threshold.
+		// Fall through: semantic returned zero rows for these filters.
 		fallback, err := d.listQuery(ctx, f, nil, SearchModeFallback)
 		if err != nil {
 			return nil, err
