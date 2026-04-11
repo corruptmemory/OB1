@@ -170,6 +170,42 @@ type PersonCount struct {
 	Count  int64
 }
 
+// SearchResultMode describes which path the unified DB.Search method
+// took. Consumed by the list template to render the appropriate
+// auto-fallback banner. Lives in templates because the view model
+// carries it end-to-end and the template branches on it directly.
+type SearchResultMode int
+
+const (
+	SearchModeNone     SearchResultMode = iota // no q, pure filter list
+	SearchModeSemantic                         // q + semantic results found
+	SearchModeFallback                         // q + semantic returned zero, fell back to ILIKE
+	SearchModeTextOnly                         // q + Ollama was down entirely
+)
+
+// ListResult bundles the rows returned by DB.Search with pagination
+// info and the mode the caller used so the list template can render
+// the banner and pagination footer without re-deriving either. Lives
+// in templates alongside ListFilters so the view model stays in one
+// place and the main package doesn't own a rendering type.
+type ListResult struct {
+	Filter     ListFilters
+	Mode       SearchResultMode
+	Results    []ThoughtData
+	Total      int64
+	TotalPages int
+}
+
+// ListData is the view-model for the list pane. SelectedID is the
+// currently-open thought's id (or 0 if none) so rows can render the
+// selected state. OllamaStatus is "green"/"amber"/"grey" — Task 11
+// adds real state tracking; Task 7 always renders "grey".
+type ListData struct {
+	Result       *ListResult
+	SelectedID   int64
+	OllamaStatus string
+}
+
 // SidebarData is the view-model for sidebar.templ. Bundles counts
 // from the DB with the currently-active filter so the template can
 // highlight active chips.

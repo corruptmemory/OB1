@@ -523,28 +523,6 @@ func (d *DB) DeleteThought(ctx context.Context, id int64) error {
 	return nil
 }
 
-// SearchResultMode describes which path the unified Search method took.
-// Consumed by the handler to render the appropriate banner.
-type SearchResultMode int
-
-const (
-	SearchModeNone     SearchResultMode = iota // no q, pure filter list
-	SearchModeSemantic                         // q + semantic results found
-	SearchModeFallback                         // q + semantic returned zero, fell back to ILIKE
-	SearchModeTextOnly                         // q + Ollama was down entirely
-)
-
-// ListResult bundles the rows returned by Search with pagination info
-// and the mode the caller used, so the handler can render a banner
-// and the pagination footer without re-deriving either.
-type ListResult struct {
-	Filter     templates.ListFilters
-	Mode       SearchResultMode
-	Results    []templates.ThoughtData
-	Total      int64
-	TotalPages int
-}
-
 // Search is the one list-pane query entry point for the v1.5 handler.
 // It combines filters with optional semantic ranking and automatically
 // falls back to ILIKE substring search when:
@@ -567,15 +545,15 @@ type ListResult struct {
 // when it fires. Given how rare the fallback currently is, this is
 // acceptable; if a similarity threshold is added later and fallback
 // becomes hot, revisit.
-func (d *DB) Search(ctx context.Context, f templates.ListFilters, embedding []float32) (*ListResult, error) {
+func (d *DB) Search(ctx context.Context, f templates.ListFilters, embedding []float32) (*templates.ListResult, error) {
 	// Path 1: no query, pure filter list.
 	if f.Q == "" {
-		return d.listQuery(ctx, f, nil, SearchModeNone)
+		return d.listQuery(ctx, f, nil, templates.SearchModeNone)
 	}
 
 	// Path 2: query present + embedding available. Try semantic first.
 	if embedding != nil {
-		result, err := d.listQuery(ctx, f, embedding, SearchModeSemantic)
+		result, err := d.listQuery(ctx, f, embedding, templates.SearchModeSemantic)
 		if err != nil {
 			return nil, err
 		}
@@ -583,7 +561,7 @@ func (d *DB) Search(ctx context.Context, f templates.ListFilters, embedding []fl
 			return result, nil
 		}
 		// Fall through: semantic returned zero rows for these filters.
-		fallback, err := d.listQuery(ctx, f, nil, SearchModeFallback)
+		fallback, err := d.listQuery(ctx, f, nil, templates.SearchModeFallback)
 		if err != nil {
 			return nil, err
 		}
@@ -591,13 +569,13 @@ func (d *DB) Search(ctx context.Context, f templates.ListFilters, embedding []fl
 	}
 
 	// Path 3: query present, Ollama was down. Text-only.
-	return d.listQuery(ctx, f, nil, SearchModeTextOnly)
+	return d.listQuery(ctx, f, nil, templates.SearchModeTextOnly)
 }
 
 // listQuery runs one pass against the database using buildListQuery
 // and buildCountQuery. Pulled out of Search so the fallback paths
 // share the same scan logic.
-func (d *DB) listQuery(ctx context.Context, f templates.ListFilters, embedding []float32, mode SearchResultMode) (*ListResult, error) {
+func (d *DB) listQuery(ctx context.Context, f templates.ListFilters, embedding []float32, mode templates.SearchResultMode) (*templates.ListResult, error) {
 	withVector := embedding != nil
 
 	countSQL, countArgs := buildCountQuery(f, withVector)
@@ -660,7 +638,7 @@ func (d *DB) listQuery(ctx context.Context, f templates.ListFilters, embedding [
 		return nil, fmt.Errorf("list rows (%d): %w", mode, err)
 	}
 
-	return &ListResult{
+	return &templates.ListResult{
 		Filter:     effective,
 		Mode:       mode,
 		Results:    results,

@@ -153,6 +153,22 @@ func withPerson(f ListFilters, p string) ListFilters { f.Person = p; return f }
 // set is usually smaller than the page we were on.
 func resetPage(f ListFilters) ListFilters { f.Page = 0; return f }
 
+// rowClass returns the list-row class string, adding --selected when
+// the row's id matches the currently-open detail pane.
+func rowClass(id int64, selectedID int64) string {
+	if id == selectedID {
+		return "list-row list-row--selected"
+	}
+	return "list-row"
+}
+
+// pageFilter returns a copy of f with Page set to the given value.
+// Used by pagination to build the URL for prev/next/numbered links.
+func pageFilter(f ListFilters, page int) ListFilters {
+	f.Page = page
+	return f
+}
+
 // filtersToURL renders a ListFilters as a URL query string, skipping
 // zero values. Used by the sidebar chips and list-pane pagination to
 // construct navigation URLs that preserve sibling filters.

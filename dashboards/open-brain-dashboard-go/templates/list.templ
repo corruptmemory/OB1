@@ -1,0 +1,134 @@
+package templates
+
+import "fmt"
+
+// List is the middle pane: toolbar with search/sort/health-dot, dense
+// two-line rows, empty state, and pagination. The pane is stateless —
+// a pure function of (Result, SelectedID, OllamaStatus) derived from
+// the URL query string by the handler. Row click handlers point at
+// /partials/detail/{id}; Task 8 adds that endpoint.
+templ List(ld ListData) {
+	<div class="list-inner">
+		<div class="list-toolbar">
+			<form class="search-form"
+				hx-get="/partials/list"
+				hx-target="#list-pane"
+				hx-push-url="true"
+				hx-trigger="input changed delay:300ms, keyup[key=='Enter'], search"
+				hx-include="[name=type],[name=topic],[name=person],[name=days]"
+			>
+				<input type="search" name="q" class="search-input"
+					value={ ld.Result.Filter.Q }
+					placeholder="Search…"
+					autocomplete="off"
+				/>
+				@hiddenFilters(ld.Result.Filter)
+			</form>
+			<span class={ "ollama-dot", "ollama-dot--" + ld.OllamaStatus }
+				title={ "embeddings: " + ld.OllamaStatus }></span>
+			<div class="list-count">
+				if ld.Result.Filter.Q != "" {
+					{ fmt.Sprintf("%d thoughts for %q", ld.Result.Total, ld.Result.Filter.Q) }
+				} else {
+					{ fmt.Sprintf("%d thoughts", ld.Result.Total) }
+				}
+			</div>
+		</div>
+		@searchBanner(ld.Result.Mode)
+		if len(ld.Result.Results) == 0 {
+			<div class="empty-state">
+				<p>No thoughts match these filters.</p>
+				<a class="link" href="/v15"
+					hx-get="/partials/list"
+					hx-target="#list-pane"
+					hx-push-url="true"
+				>Clear filters</a>
+			</div>
+		} else {
+			<ul class="list-rows">
+				for _, t := range ld.Result.Results {
+					@listRow(t, ld.SelectedID, ld.Result.Filter)
+				}
+			</ul>
+			if ld.Result.TotalPages > 1 {
+				@pagination(ld.Result)
+			}
+		}
+	</div>
+}
+
+// hiddenFilters renders the current filter set as hidden inputs so
+// the search form's hx-include can pick them up and preserve sibling
+// filters when the search query changes.
+templ hiddenFilters(f ListFilters) {
+	if f.Type != "" {
+		<input type="hidden" name="type" value={ f.Type }/>
+	}
+	if f.Topic != "" {
+		<input type="hidden" name="topic" value={ f.Topic }/>
+	}
+	if f.Person != "" {
+		<input type="hidden" name="person" value={ f.Person }/>
+	}
+	if f.Days > 0 {
+		<input type="hidden" name="days" value={ fmt.Sprintf("%d", f.Days) }/>
+	}
+}
+
+// searchBanner renders the auto-fallback explanation for the modes
+// that fall back to ILIKE. SearchModeNone and SearchModeSemantic
+// produce no banner.
+templ searchBanner(mode SearchResultMode) {
+	switch mode {
+		case SearchModeFallback:
+			<div class="search-banner">no semantic matches — showing text matches</div>
+		case SearchModeTextOnly:
+			<div class="search-banner">text-only — embeddings unavailable</div>
+	}
+}
+
+templ listRow(t ThoughtData, selectedID int64, current ListFilters) {
+	<li>
+		<a class={ rowClass(t.ID, selectedID) }
+			href={ templ.SafeURL(fmt.Sprintf("/v15?%s&id=%d", filtersToURL(current), t.ID)) }
+			hx-get={ fmt.Sprintf("/partials/detail/%d?%s", t.ID, filtersToURL(current)) }
+			hx-target="#detail-pane"
+			hx-push-url="true"
+		>
+			<div class="row-line1">
+				<span class={ TypeClass(t.Type) }>{ t.Type }</span>
+				<span class="row-time">{ HumanTime(t.CreatedAt) }</span>
+				<span class="row-id">{ fmt.Sprintf("#%d", t.ID) }</span>
+			</div>
+			<div class="row-line2">
+				{ Truncate(t.Content, 120) }
+			</div>
+		</a>
+	</li>
+}
+
+templ pagination(r *ListResult) {
+	<nav class="pagination">
+		if r.Filter.Page > 1 {
+			<a class="page-link"
+				href={ templ.SafeURL("/v15?" + filtersToURL(pageFilter(r.Filter, r.Filter.Page-1))) }
+				hx-get={ "/partials/list?" + filtersToURL(pageFilter(r.Filter, r.Filter.Page-1)) }
+				hx-target="#list-pane"
+				hx-push-url="true"
+			>« Prev</a>
+		} else {
+			<span class="page-link disabled">« Prev</span>
+		}
+		<span class="page-indicator">{ fmt.Sprintf("Page %d of %d", r.Filter.Page, r.TotalPages) }</span>
+		if r.Filter.Page < r.TotalPages {
+			<a class="page-link"
+				href={ templ.SafeURL("/v15?" + filtersToURL(pageFilter(r.Filter, r.Filter.Page+1))) }
+				hx-get={ "/partials/list?" + filtersToURL(pageFilter(r.Filter, r.Filter.Page+1)) }
+				hx-target="#list-pane"
+				hx-push-url="true"
+			>Next »</a>
+		} else {
+			<span class="page-link disabled">Next »</span>
+		}
+	</nav>
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/url"
@@ -38,6 +39,7 @@ func NewServer(db *DB, ollama *OllamaClient) *Server {
 	s.router.Post("/thought/{id}/delete", s.handleDelete)
 	s.router.Get("/partials/action-item-row", s.handleActionItemRow)
 	s.router.Get("/v15", s.handleShell)
+	s.router.Get("/partials/list", s.handlePartialList)
 
 	// Static files (tokens.css, app.css, vendor/htmx.min.js, ...) served flat
 	// under /static/ to match the thought-store convention.
@@ -51,17 +53,57 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
 }
 
+// embed is the dashboard's single entry point to the Ollama embedding
+// endpoint. Callers pass the user's search query; the method returns
+// the vector on success or nil on any failure (Ollama down, network
+// blip, non-200 response, etc.), which is the contract DB.Search
+// expects to decide between the semantic and text-only paths. Task 11
+// wraps this in an actor-pattern health tracker; for now it's a thin
+// pass-through.
+func (s *Server) embed(ctx context.Context, q string) []float32 {
+	emb, err := s.ollama.Embed(ctx, q)
+	if err != nil {
+		return nil
+	}
+	return emb
+}
+
+// selectedIDFromQuery parses the ?id=N query parameter into an int64,
+// returning 0 when the parameter is missing or malformed. Used by
+// handleShell and handlePartialList to render the list row for the
+// currently-open thought in its --selected state.
+func selectedIDFromQuery(r *http.Request) int64 {
+	idStr := r.URL.Query().Get("id")
+	if idStr == "" {
+		return 0
+	}
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return id
+}
+
 // handleShell is the v1.5 master/detail route. During cutover it lives
 // at /v15; Task 14 flips it to / and redirects the v1.1 routes. The
-// shell template is agnostic about pane content — this handler wires
-// placeholder components into each named slot, and later tasks swap
-// them out for real sidebar/list/detail renderers.
+// handler renders the sidebar and list panes with real data; the
+// detail pane stays a placeholder until Task 8 lands.
 func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-
 	filters := parseListFilters(r)
 
 	sidebarCounts, err := s.db.SidebarCounts(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var embedding []float32
+	if filters.Q != "" {
+		embedding = s.embed(ctx, filters.Q)
+	}
+
+	result, err := s.db.Search(ctx, filters, embedding)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -76,13 +118,49 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 		Active:    filters,
 	}
 
+	listData := templates.ListData{
+		Result:       result,
+		SelectedID:   selectedIDFromQuery(r),
+		OllamaStatus: "grey", // Task 11 will populate from an actor
+	}
+
 	vm := templates.ShellViewModel{
 		Sidebar: templates.Sidebar(sidebarData),
-		List:    templates.PlaceholderList(),
+		List:    templates.List(listData),
 		Detail:  templates.PlaceholderDetail(),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.Shell(vm).Render(ctx, w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// handlePartialList renders just the #list-pane contents for htmx
+// swaps triggered by sidebar chip clicks, search input, pagination,
+// and sort toggles. The response is the raw list-inner HTML — no
+// <html> wrapper — so htmx can swap it straight into #list-pane.
+func (s *Server) handlePartialList(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	filters := parseListFilters(r)
+
+	var embedding []float32
+	if filters.Q != "" {
+		embedding = s.embed(ctx, filters.Q)
+	}
+
+	result, err := s.db.Search(ctx, filters, embedding)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	vm := templates.ListData{
+		Result:       result,
+		SelectedID:   selectedIDFromQuery(r),
+		OllamaStatus: "grey", // Task 11 will populate from an actor
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.List(vm).Render(ctx, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
