@@ -1611,6 +1611,10 @@ a:hover {
 
 /* ---- v1.5 compose panel ---- */
 
+/* Do not add padding to .compose-dialog — app.js relies on
+   `e.target === d` to detect backdrop clicks in modal mode, and any
+   non-zero padding makes the padding area count as the dialog itself,
+   breaking that check. Put padding on inner wrappers instead. */
 .compose-dialog {
 	position: fixed;
 	bottom: 0;

@@ -102,3 +102,16 @@ document.addEventListener("keydown", function (e) {
 		d.classList.toggle("compose-minimized");
 	}
 });
+
+// Belt-and-suspenders: the native <dialog> cancel event fires on Esc
+// in modal mode and would close the dialog by default, losing the
+// draft. Our keydown handler above should preventDefault the Esc
+// press first, but in case the browser dispatches cancel through a
+// different code path, swallow it here too. Delegated from body
+// since the dialog element is inserted into the DOM via htmx after
+// this script runs.
+document.body.addEventListener("cancel", function (e) {
+	if (e.target && e.target.id === "compose-dialog") {
+		e.preventDefault();
+	}
+});
