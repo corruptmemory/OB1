@@ -3,23 +3,9 @@ package main
 import (
 	"fmt"
 	"strings"
-)
 
-// ListFilters is the full set of query-string-driven selectors that the
-// unified /?... handler combines into a single list query. Empty strings
-// and zero values are skipped.
-type ListFilters struct {
-	Type    string // metadata->>'type' equality
-	Topic   string // metadata->'topics' array membership
-	Person  string // metadata->'people' array membership
-	Days    int    // created_at > now() - interval '$ days'
-	// Q is the user's search text. When the caller has embedded Q into a
-	// vector and passes withVector=true, Q drives pgvector ranking.
-	// Otherwise Q falls back to an ILIKE substring match on content.
-	Q       string
-	Page    int
-	PerPage int
-}
+	"github.com/NateBJones-Projects/OB1/dashboards/open-brain-dashboard-go/templates"
+)
 
 // buildListQuery produces the SELECT for the list pane given a filter
 // set and whether the caller has a vector on hand for semantic ranking.
@@ -41,7 +27,7 @@ type ListFilters struct {
 // be well-formed but the similarity score will be meaningless. Search()
 // (in thoughts.go, Task 4+) is the sole caller and enforces the Q!=""
 // precondition.
-func buildListQuery(f ListFilters, withVector bool) (string, []any) {
+func buildListQuery(f templates.ListFilters, withVector bool) (string, []any) {
 	var b strings.Builder
 	args := []any{}
 	n := 0
@@ -116,7 +102,7 @@ WHERE 1=1`)
 // non-null embedding matched against the other filters, and similarity
 // isn't a WHERE clause. If a similarity threshold is ever introduced
 // in buildListQuery, the count here will need to match.
-func buildCountQuery(f ListFilters, withVector bool) (string, []any) {
+func buildCountQuery(f templates.ListFilters, withVector bool) (string, []any) {
 	var b strings.Builder
 	args := []any{}
 	n := 0

@@ -146,3 +146,38 @@ type ShellViewModel struct {
 	List    templ.Component
 	Detail  templ.Component
 }
+
+// ListFilters is the full set of query-string-driven selectors that the
+// unified /?... handler combines into a single list query. Empty strings
+// and zero values are skipped. Lives in templates so the sidebar view
+// model can reference it without creating a cycle from package main.
+type ListFilters struct {
+	Type   string // metadata->>'type' equality
+	Topic  string // metadata->'topics' array membership
+	Person string // metadata->'people' array membership
+	Days   int    // created_at > now() - interval '$ days'
+	// Q is the user's search text. When the caller has embedded Q into a
+	// vector and passes withVector=true, Q drives pgvector ranking.
+	// Otherwise Q falls back to an ILIKE substring match on content.
+	Q       string
+	Page    int
+	PerPage int
+}
+
+// PersonCount is the view model for a row in the sidebar's People list.
+type PersonCount struct {
+	Person string
+	Count  int64
+}
+
+// SidebarData is the view-model for sidebar.templ. Bundles counts
+// from the DB with the currently-active filter so the template can
+// highlight active chips.
+type SidebarData struct {
+	Total     int64
+	WeekCount int64
+	Types     []TypeCount
+	Topics    []TopicCount
+	People    []PersonCount
+	Active    ListFilters
+}

@@ -538,7 +538,7 @@ const (
 // and the mode the caller used, so the handler can render a banner
 // and the pagination footer without re-deriving either.
 type ListResult struct {
-	Filter     ListFilters
+	Filter     templates.ListFilters
 	Mode       SearchResultMode
 	Results    []templates.ThoughtData
 	Total      int64
@@ -567,7 +567,7 @@ type ListResult struct {
 // when it fires. Given how rare the fallback currently is, this is
 // acceptable; if a similarity threshold is added later and fallback
 // becomes hot, revisit.
-func (d *DB) Search(ctx context.Context, f ListFilters, embedding []float32) (*ListResult, error) {
+func (d *DB) Search(ctx context.Context, f templates.ListFilters, embedding []float32) (*ListResult, error) {
 	// Path 1: no query, pure filter list.
 	if f.Q == "" {
 		return d.listQuery(ctx, f, nil, SearchModeNone)
@@ -597,7 +597,7 @@ func (d *DB) Search(ctx context.Context, f ListFilters, embedding []float32) (*L
 // listQuery runs one pass against the database using buildListQuery
 // and buildCountQuery. Pulled out of Search so the fallback paths
 // share the same scan logic.
-func (d *DB) listQuery(ctx context.Context, f ListFilters, embedding []float32, mode SearchResultMode) (*ListResult, error) {
+func (d *DB) listQuery(ctx context.Context, f templates.ListFilters, embedding []float32, mode SearchResultMode) (*ListResult, error) {
 	withVector := embedding != nil
 
 	countSQL, countArgs := buildCountQuery(f, withVector)
@@ -682,6 +682,89 @@ func (d *DB) BulkDelete(ctx context.Context, ids []int64) (int64, error) {
 		return 0, fmt.Errorf("bulk delete: %w", err)
 	}
 	return tag.RowsAffected(), nil
+}
+
+// SidebarCounts is the one query set that powers the filter rail:
+// total, week count, by-type counts, top-10 topics, top-10 people.
+type SidebarCounts struct {
+	Total     int64
+	WeekCount int64
+	Types     []templates.TypeCount
+	Topics    []templates.TopicCount
+	People    []templates.PersonCount
+}
+
+func (d *DB) SidebarCounts(ctx context.Context) (*SidebarCounts, error) {
+	sc := &SidebarCounts{}
+
+	if err := d.pool.QueryRow(ctx, `SELECT count(*) FROM thoughts`).Scan(&sc.Total); err != nil {
+		return nil, fmt.Errorf("sidebar total: %w", err)
+	}
+	if err := d.pool.QueryRow(ctx, `
+		SELECT count(*) FROM thoughts WHERE created_at > now() - interval '7 days'
+	`).Scan(&sc.WeekCount); err != nil {
+		return nil, fmt.Errorf("sidebar week: %w", err)
+	}
+
+	typeRows, err := d.pool.Query(ctx, `
+		SELECT coalesce(metadata->>'type', 'unknown') AS t, count(*) AS n
+		FROM thoughts
+		GROUP BY t
+		ORDER BY n DESC, t ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("sidebar types: %w", err)
+	}
+	defer typeRows.Close()
+	for typeRows.Next() {
+		var tc templates.TypeCount
+		if err := typeRows.Scan(&tc.Type, &tc.Count); err != nil {
+			return nil, fmt.Errorf("scan type: %w", err)
+		}
+		sc.Types = append(sc.Types, tc)
+	}
+
+	topicRows, err := d.pool.Query(ctx, `
+		SELECT topic, count(*) AS n
+		FROM thoughts, jsonb_array_elements_text(metadata->'topics') AS topic
+		WHERE jsonb_typeof(metadata->'topics') = 'array'
+		GROUP BY topic
+		ORDER BY n DESC, topic ASC
+		LIMIT 10
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("sidebar topics: %w", err)
+	}
+	defer topicRows.Close()
+	for topicRows.Next() {
+		var tc templates.TopicCount
+		if err := topicRows.Scan(&tc.Topic, &tc.Count); err != nil {
+			return nil, fmt.Errorf("scan topic: %w", err)
+		}
+		sc.Topics = append(sc.Topics, tc)
+	}
+
+	peopleRows, err := d.pool.Query(ctx, `
+		SELECT person, count(*) AS n
+		FROM thoughts, jsonb_array_elements_text(metadata->'people') AS person
+		WHERE jsonb_typeof(metadata->'people') = 'array'
+		GROUP BY person
+		ORDER BY n DESC, person ASC
+		LIMIT 10
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("sidebar people: %w", err)
+	}
+	defer peopleRows.Close()
+	for peopleRows.Next() {
+		var pc templates.PersonCount
+		if err := peopleRows.Scan(&pc.Person, &pc.Count); err != nil {
+			return nil, fmt.Errorf("scan person: %w", err)
+		}
+		sc.People = append(sc.People, pc)
+	}
+
+	return sc, nil
 }
 
 // ThoughtByID fetches a single thought and its full metadata for the detail

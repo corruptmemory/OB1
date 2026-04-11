@@ -57,15 +57,56 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // placeholder components into each named slot, and later tasks swap
 // them out for real sidebar/list/detail renderers.
 func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	filters := parseListFilters(r)
+
+	sidebarCounts, err := s.db.SidebarCounts(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	sidebarData := templates.SidebarData{
+		Total:     sidebarCounts.Total,
+		WeekCount: sidebarCounts.WeekCount,
+		Types:     sidebarCounts.Types,
+		Topics:    sidebarCounts.Topics,
+		People:    sidebarCounts.People,
+		Active:    filters,
+	}
+
 	vm := templates.ShellViewModel{
-		Sidebar: templates.PlaceholderSidebar(),
+		Sidebar: templates.Sidebar(sidebarData),
 		List:    templates.PlaceholderList(),
 		Detail:  templates.PlaceholderDetail(),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := templates.Shell(vm).Render(r.Context(), w); err != nil {
+	if err := templates.Shell(vm).Render(ctx, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// parseListFilters reads the query-string filters into a ListFilters
+// struct. Invalid ints silently become 0; invalid page becomes 1.
+func parseListFilters(r *http.Request) templates.ListFilters {
+	q := r.URL.Query()
+	f := templates.ListFilters{
+		Type:    q.Get("type"),
+		Topic:   q.Get("topic"),
+		Person:  q.Get("person"),
+		Q:       q.Get("q"),
+		PerPage: 50,
+	}
+	if d, err := strconv.Atoi(q.Get("days")); err == nil && d > 0 {
+		f.Days = d
+	}
+	if p, err := strconv.Atoi(q.Get("page")); err == nil && p > 0 {
+		f.Page = p
+	} else {
+		f.Page = 1
+	}
+	return f
 }
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {

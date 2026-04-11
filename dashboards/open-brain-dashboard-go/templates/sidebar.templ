@@ -1,0 +1,166 @@
+package templates
+
+import "fmt"
+
+// Sidebar renders the v1.5 filter rail: a compose-new button, three
+// filter sections (type chips, time window, topic/person lists), and
+// a footer with total/week stats plus the theme toggle.
+//
+// Every hx-get URL targets /partials/list?... with hx-push-url so the
+// URL stays in sync with pane state. The /partials/list endpoint
+// itself is added in Task 7 — during the Task 6 → 7 gap clicking a
+// chip will 404, but the sidebar renders correctly.
+templ Sidebar(sd SidebarData) {
+	<div class="sidebar-inner">
+		<button class="btn-new"
+			hx-get="/partials/compose"
+			hx-target="#compose-slot"
+			hx-swap="innerHTML"
+		>
+			+ New thought
+		</button>
+		<section class="filter-section">
+			<h3 class="filter-heading">Type</h3>
+			<ul class="chip-list">
+				@typeChip("", "All", totalCount(sd.Types), sd.Active)
+				for _, tc := range sd.Types {
+					@typeChip(tc.Type, tc.Type, tc.Count, sd.Active)
+				}
+			</ul>
+		</section>
+		<section class="filter-section">
+			<h3 class="filter-heading">Time</h3>
+			<ul class="chip-list chip-list--row">
+				@daysChip(0, "All", sd.Active)
+				@daysChip(7, "7d", sd.Active)
+				@daysChip(30, "30d", sd.Active)
+				@daysChip(90, "90d", sd.Active)
+			</ul>
+		</section>
+		if len(sd.Topics) > 0 {
+			<section class="filter-section">
+				<h3 class="filter-heading">Topics</h3>
+				<ul class="filter-list">
+					for _, tc := range sd.Topics {
+						@topicRow(tc.Topic, tc.Count, sd.Active)
+					}
+				</ul>
+			</section>
+		}
+		if len(sd.People) > 0 {
+			<section class="filter-section">
+				<h3 class="filter-heading">People</h3>
+				<ul class="filter-list">
+					for _, pc := range sd.People {
+						@personRow(pc.Person, pc.Count, sd.Active)
+					}
+				</ul>
+			</section>
+		}
+		<footer class="sidebar-footer">
+			<div class="stats-line">
+				{ fmt.Sprintf("%d thoughts · %d this week", sd.Total, sd.WeekCount) }
+			</div>
+			<div class="footer-actions">
+				<button class="btn-icon" onclick="obToggleTheme()" title="Toggle theme">☾</button>
+				<button class="btn-icon" title="Settings (coming soon)" disabled>⚙</button>
+			</div>
+		</footer>
+	</div>
+}
+
+templ typeChip(value, label string, count int64, active ListFilters) {
+	if active.Type == value {
+		<li>
+			<a class="chip chip--active"
+				hx-get={ "/partials/list?" + filtersToURL(clearType(active)) }
+				hx-target="#list-pane"
+				hx-push-url="true"
+			>
+				{ label } <span class="chip-count">{ fmt.Sprintf("%d", count) }</span>
+			</a>
+		</li>
+	} else {
+		<li>
+			<a class="chip"
+				hx-get={ "/partials/list?" + filtersToURL(withType(active, value)) }
+				hx-target="#list-pane"
+				hx-push-url="true"
+			>
+				{ label } <span class="chip-count">{ fmt.Sprintf("%d", count) }</span>
+			</a>
+		</li>
+	}
+}
+
+templ daysChip(days int, label string, active ListFilters) {
+	if active.Days == days {
+		<li>
+			<a class="chip chip--active"
+				hx-get={ "/partials/list?" + filtersToURL(withDays(active, 0)) }
+				hx-target="#list-pane"
+				hx-push-url="true"
+			>{ label }</a>
+		</li>
+	} else {
+		<li>
+			<a class="chip"
+				hx-get={ "/partials/list?" + filtersToURL(withDays(active, days)) }
+				hx-target="#list-pane"
+				hx-push-url="true"
+			>{ label }</a>
+		</li>
+	}
+}
+
+templ topicRow(topic string, count int64, active ListFilters) {
+	if active.Topic == topic {
+		<li>
+			<a class="filter-row filter-row--active"
+				hx-get={ "/partials/list?" + filtersToURL(withTopic(active, "")) }
+				hx-target="#list-pane"
+				hx-push-url="true"
+			>
+				<span class="filter-label">{ topic }</span>
+				<span class="filter-count">{ fmt.Sprintf("%d", count) }</span>
+			</a>
+		</li>
+	} else {
+		<li>
+			<a class="filter-row"
+				hx-get={ "/partials/list?" + filtersToURL(withTopic(active, topic)) }
+				hx-target="#list-pane"
+				hx-push-url="true"
+			>
+				<span class="filter-label">{ topic }</span>
+				<span class="filter-count">{ fmt.Sprintf("%d", count) }</span>
+			</a>
+		</li>
+	}
+}
+
+templ personRow(person string, count int64, active ListFilters) {
+	if active.Person == person {
+		<li>
+			<a class="filter-row filter-row--active"
+				hx-get={ "/partials/list?" + filtersToURL(withPerson(active, "")) }
+				hx-target="#list-pane"
+				hx-push-url="true"
+			>
+				<span class="filter-label">{ person }</span>
+				<span class="filter-count">{ fmt.Sprintf("%d", count) }</span>
+			</a>
+		</li>
+	} else {
+		<li>
+			<a class="filter-row"
+				hx-get={ "/partials/list?" + filtersToURL(withPerson(active, person)) }
+				hx-target="#list-pane"
+				hx-push-url="true"
+			>
+				<span class="filter-label">{ person }</span>
+				<span class="filter-count">{ fmt.Sprintf("%d", count) }</span>
+			</a>
+		</li>
+	}
+}

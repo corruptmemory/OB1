@@ -124,6 +124,56 @@ func PersonURL(person string) string {
 	return BrowseURL(BrowseFilter{Person: person}, 1)
 }
 
+// totalCount sums the counts in a by-type slice so the sidebar "All"
+// chip can render a cumulative number without a separate query.
+func totalCount(types []TypeCount) int64 {
+	var total int64
+	for _, t := range types {
+		total += t.Count
+	}
+	return total
+}
+
+// clearType returns a copy of f with Type cleared. Used by the
+// sidebar's active-chip affordance: clicking an already-active chip
+// drops the filter.
+func clearType(f ListFilters) ListFilters { f.Type = ""; return f }
+
+// withType / withDays / withTopic / withPerson return a copy of f with
+// one field replaced. The sidebar chips build their hx-get URLs by
+// composing these on top of the currently-active ListFilters so
+// siblings are preserved across clicks.
+func withType(f ListFilters, t string) ListFilters   { f.Type = t; return f }
+func withDays(f ListFilters, d int) ListFilters      { f.Days = d; return f }
+func withTopic(f ListFilters, t string) ListFilters  { f.Topic = t; return f }
+func withPerson(f ListFilters, p string) ListFilters { f.Person = p; return f }
+
+// filtersToURL renders a ListFilters as a URL query string, skipping
+// zero values. Used by the sidebar chips and list-pane pagination to
+// construct navigation URLs that preserve sibling filters.
+func filtersToURL(f ListFilters) string {
+	v := url.Values{}
+	if f.Type != "" {
+		v.Set("type", f.Type)
+	}
+	if f.Topic != "" {
+		v.Set("topic", f.Topic)
+	}
+	if f.Person != "" {
+		v.Set("person", f.Person)
+	}
+	if f.Days > 0 {
+		v.Set("days", fmt.Sprintf("%d", f.Days))
+	}
+	if f.Q != "" {
+		v.Set("q", f.Q)
+	}
+	if f.Page > 1 {
+		v.Set("page", fmt.Sprintf("%d", f.Page))
+	}
+	return v.Encode()
+}
+
 // SearchURL builds a /search?... URL preserving query, mode, and page.
 // Used by pagination and by mode-toggle links on the search page.
 func SearchURL(query, mode string, page int) string {
