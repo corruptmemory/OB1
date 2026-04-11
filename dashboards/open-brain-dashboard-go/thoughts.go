@@ -523,6 +523,158 @@ func (d *DB) DeleteThought(ctx context.Context, id int64) error {
 	return nil
 }
 
+// SearchResultMode describes which path the unified Search method took.
+// Consumed by the handler to render the appropriate banner.
+type SearchResultMode int
+
+const (
+	SearchModeNone     SearchResultMode = iota // no q, pure filter list
+	SearchModeSemantic                         // q + semantic results found
+	SearchModeFallback                         // q + semantic returned zero, fell back to ILIKE
+	SearchModeTextOnly                         // q + Ollama was down entirely
+)
+
+// ListResult bundles the rows returned by Search with pagination info
+// and the mode the caller used, so the handler can render a banner
+// and the pagination footer without re-deriving either.
+type ListResult struct {
+	Filter     ListFilters
+	Mode       SearchResultMode
+	Results    []templates.ThoughtData
+	Total      int64
+	TotalPages int
+}
+
+// Search is the one list-pane query entry point for the v1.5 handler.
+// It combines filters with optional semantic ranking, and automatically
+// falls back to ILIKE substring search if:
+//   - the caller passed a nil embedding (Ollama down), or
+//   - semantic ranking returned zero results above threshold
+//
+// The caller is responsible for calling ollama.Embed separately and
+// passing the result (nil on failure). This keeps thoughts.go free of
+// HTTP concerns.
+//
+// Preconditions:
+//   - If embedding is non-nil, filters.Q must also be non-empty.
+//     (Enforces the buildListQuery withVector contract.)
+func (d *DB) Search(ctx context.Context, f ListFilters, embedding []float32) (*ListResult, error) {
+	// Path 1: no query, pure filter list.
+	if f.Q == "" {
+		return d.listQuery(ctx, f, nil, SearchModeNone)
+	}
+
+	// Path 2: query present + embedding available. Try semantic first.
+	if embedding != nil {
+		result, err := d.listQuery(ctx, f, embedding, SearchModeSemantic)
+		if err != nil {
+			return nil, err
+		}
+		if result.Total > 0 {
+			return result, nil
+		}
+		// Fall through: semantic returned zero matches above threshold.
+		fallback, err := d.listQuery(ctx, f, nil, SearchModeFallback)
+		if err != nil {
+			return nil, err
+		}
+		return fallback, nil
+	}
+
+	// Path 3: query present, Ollama was down. Text-only.
+	return d.listQuery(ctx, f, nil, SearchModeTextOnly)
+}
+
+// listQuery runs one pass against the database using buildListQuery
+// and buildCountQuery. Pulled out of Search so the fallback paths
+// share the same scan logic.
+func (d *DB) listQuery(ctx context.Context, f ListFilters, embedding []float32, mode SearchResultMode) (*ListResult, error) {
+	withVector := embedding != nil
+
+	countSQL, countArgs := buildCountQuery(f, withVector)
+	var total int64
+	if err := d.pool.QueryRow(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+		return nil, fmt.Errorf("list count (%d): %w", mode, err)
+	}
+
+	perPage := f.PerPage
+	if perPage < 1 {
+		perPage = 50
+	}
+	totalPages := int((total + int64(perPage) - 1) / int64(perPage))
+	if totalPages == 0 {
+		totalPages = 1
+	}
+	page := f.Page
+	if page < 1 {
+		page = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+
+	effective := f
+	effective.Page = page
+	effective.PerPage = perPage
+
+	listSQL, listArgs := buildListQuery(effective, withVector)
+
+	var finalArgs []any
+	if withVector {
+		vec := pgvector.NewVector(embedding)
+		finalArgs = append([]any{vec}, listArgs...)
+	} else {
+		finalArgs = listArgs
+	}
+
+	rows, err := d.pool.Query(ctx, listSQL, finalArgs...)
+	if err != nil {
+		return nil, fmt.Errorf("list query (%d): %w", mode, err)
+	}
+	defer rows.Close()
+
+	var results []templates.ThoughtData
+	for rows.Next() {
+		var t templates.ThoughtData
+		if withVector {
+			if err := scanThoughtRow(rows, &t, &t.Similarity); err != nil {
+				return nil, fmt.Errorf("list scan (%d): %w", mode, err)
+			}
+		} else {
+			if err := scanThoughtRow(rows, &t); err != nil {
+				return nil, fmt.Errorf("list scan (%d): %w", mode, err)
+			}
+		}
+		results = append(results, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list rows (%d): %w", mode, err)
+	}
+
+	return &ListResult{
+		Filter:     effective,
+		Mode:       mode,
+		Results:    results,
+		Total:      total,
+		TotalPages: totalPages,
+	}, nil
+}
+
+// BulkDelete removes a batch of thoughts by ID in a single statement.
+// Returns the number of rows affected. Empty ids is a no-op that
+// returns (0, nil) without hitting the DB.
+func (d *DB) BulkDelete(ctx context.Context, ids []int64) (int64, error) {
+	sql, args := buildBulkDeleteQuery(ids)
+	if sql == "" {
+		return 0, nil
+	}
+	tag, err := d.pool.Exec(ctx, sql, args...)
+	if err != nil {
+		return 0, fmt.Errorf("bulk delete: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // ThoughtByID fetches a single thought and its full metadata for the detail
 // page. Returns pgx.ErrNoRows unchanged when the id doesn't exist so the
 // handler can branch to a 404 via errors.Is.

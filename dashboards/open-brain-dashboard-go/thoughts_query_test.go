@@ -90,3 +90,27 @@ func TestBuildCountQuery(t *testing.T) {
 		t.Errorf("count args = %d, want 2", len(args))
 	}
 }
+
+func TestBuildBulkDeleteQuery(t *testing.T) {
+	sql, args := buildBulkDeleteQuery([]int64{1, 2, 3})
+	if !strings.Contains(sql, "DELETE FROM thoughts") {
+		t.Errorf("expected DELETE FROM thoughts, got:\n%s", sql)
+	}
+	if !strings.Contains(sql, "id = ANY($1)") {
+		t.Errorf("expected id = ANY($1), got:\n%s", sql)
+	}
+	if len(args) != 1 {
+		t.Errorf("expected 1 arg (the ids slice), got %d", len(args))
+	}
+	ids, ok := args[0].([]int64)
+	if !ok || len(ids) != 3 {
+		t.Errorf("expected args[0] = []int64{1,2,3}, got %v", args[0])
+	}
+}
+
+func TestBuildBulkDeleteQueryEmpty(t *testing.T) {
+	sql, args := buildBulkDeleteQuery(nil)
+	if sql != "" || args != nil {
+		t.Errorf("empty ids should return empty sql + nil args, got sql=%q args=%v", sql, args)
+	}
+}

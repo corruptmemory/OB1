@@ -149,3 +149,13 @@ func buildCountQuery(f ListFilters, withVector bool) (string, []any) {
 	}
 	return b.String(), args
 }
+
+// buildBulkDeleteQuery returns the SQL and args for deleting a batch
+// of thoughts by ID. Empty or nil ids returns empty strings so the
+// caller can short-circuit without hitting the DB.
+func buildBulkDeleteQuery(ids []int64) (string, []any) {
+	if len(ids) == 0 {
+		return "", nil
+	}
+	return "DELETE FROM thoughts WHERE id = ANY($1)", []any{ids}
+}
