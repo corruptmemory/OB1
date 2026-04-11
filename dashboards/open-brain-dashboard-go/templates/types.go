@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"time"
+
+	"github.com/a-h/templ"
 )
 
 // ThoughtData is the view model for a single thought as rendered on the
@@ -133,4 +135,14 @@ type SearchData struct {
 	PerPage    int
 	TotalPages int
 	EmbedError string
+}
+
+// ShellViewModel is the payload for the v1.5 three-pane shell. Each pane
+// is a pre-rendered templ.Component so the shell template stays agnostic
+// about what lives inside it — handlers decide which component to pass
+// for each slot based on the URL's query string.
+type ShellViewModel struct {
+	Sidebar templ.Component
+	List    templ.Component
+	Detail  templ.Component
 }

@@ -37,6 +37,7 @@ func NewServer(db *DB, ollama *OllamaClient) *Server {
 	s.router.Post("/thought/{id}/edit", s.handleUpdate)
 	s.router.Post("/thought/{id}/delete", s.handleDelete)
 	s.router.Get("/partials/action-item-row", s.handleActionItemRow)
+	s.router.Get("/v15", s.handleShell)
 
 	// Static files (tokens.css, app.css, vendor/htmx.min.js, ...) served flat
 	// under /static/ to match the thought-store convention.
@@ -48,6 +49,23 @@ func NewServer(db *DB, ollama *OllamaClient) *Server {
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
+}
+
+// handleShell is the v1.5 master/detail route. During cutover it lives
+// at /v15; Task 14 flips it to / and redirects the v1.1 routes. The
+// shell template is agnostic about pane content — this handler wires
+// placeholder components into each named slot, and later tasks swap
+// them out for real sidebar/list/detail renderers.
+func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
+	vm := templates.ShellViewModel{
+		Sidebar: templates.PlaceholderSidebar(),
+		List:    templates.PlaceholderList(),
+		Detail:  templates.PlaceholderDetail(),
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.Shell(vm).Render(r.Context(), w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {

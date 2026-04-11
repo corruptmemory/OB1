@@ -1,0 +1,44 @@
+package templates
+
+templ Shell(vm ShellViewModel) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>Open Brain</title>
+			<link rel="icon" type="image/svg+xml" href="/static/favicon.svg"/>
+			<script>try{if(localStorage.getItem('ob-theme')==='light')document.documentElement.setAttribute('data-theme','light')}catch(e){}</script>
+			<link rel="stylesheet" href="/static/tokens.css"/>
+			<link rel="stylesheet" href="/static/app.css"/>
+			<script src="/static/vendor/htmx.min.js"></script>
+			<script src="/static/js/app.js" defer></script>
+		</head>
+		<body>
+			<div class="app">
+				<nav class="sidebar" id="sidebar-pane">
+					@vm.Sidebar
+				</nav>
+				<main class="list" id="list-pane">
+					@vm.List
+				</main>
+				<aside class="detail" id="detail-pane">
+					@vm.Detail
+				</aside>
+			</div>
+			<div id="compose-slot"></div>
+		</body>
+	</html>
+}
+
+templ PlaceholderSidebar() {
+	<div class="placeholder">sidebar placeholder</div>
+}
+
+templ PlaceholderList() {
+	<div class="placeholder">list placeholder</div>
+}
+
+templ PlaceholderDetail() {
+	<div class="placeholder">detail placeholder — no thought selected</div>
+}

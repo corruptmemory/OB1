@@ -1178,3 +1178,61 @@ a:hover {
 	overflow-x: auto;
 	line-height: 1.5;
 }
+
+/* ---- v1.5 master/detail shell ---- */
+
+/* v1.5 grid shell. Desktop-first, mobile-viable via a single media
+   query below. CSS grid with named areas sized in fr + min-content
+   so the phone fallback is a one-column override. */
+.app {
+	display: grid;
+	grid-template-columns: min-content 1fr min-content;
+	grid-template-areas: "sidebar list detail";
+	min-height: 100vh;
+	background: var(--bg);
+	color: var(--fg);
+	font-family: var(--font-sans);
+}
+
+.app .sidebar {
+	grid-area: sidebar;
+	width: 18rem;
+	border-right: 1px solid var(--border);
+	background: var(--bg-elevated);
+	padding: var(--space-4);
+	overflow-y: auto;
+}
+
+.app .list {
+	grid-area: list;
+	min-width: 26rem;
+	border-right: 1px solid var(--border);
+	overflow-y: auto;
+}
+
+.app .detail {
+	grid-area: detail;
+	width: 32rem;
+	background: var(--bg-elevated);
+	padding: var(--space-5);
+	overflow-y: auto;
+}
+
+.app .placeholder {
+	padding: var(--space-5);
+	color: var(--fg-muted);
+	font-style: italic;
+}
+
+/* Single-column fallback for small screens. Phone variant refinement
+   is deferred but this gives mobile a usable default. */
+@media (max-width: 860px) {
+	.app {
+		grid-template-columns: 1fr;
+		grid-template-areas: "list";
+	}
+	.app .sidebar,
+	.app .detail {
+		display: none;
+	}
+}
