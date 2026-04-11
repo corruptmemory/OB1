@@ -9,54 +9,84 @@ Intended to pair with [`integrations/docker-compose-deployment/`](../../integrat
 
 ## Status
 
-v1.1 complete. All CRUD + search is working against a real Open Brain
-database: home, detail, browse, and search on the read side; create,
-edit (including action items), and delete on the write side. The dev
-build runs on a workstation against a remote `home-server:5432` and
-`home-server:11434`.
+**v1.5 complete.** The dashboard is a three-pane master/detail shell
+(Gmail-style) at `/`, driven entirely by URL query parameters. The
+v1.1 flat pages (home / browse / search / detail) are gone — their
+URLs redirect into the unified `/?…` shape so bookmarks keep working.
+All CRUD is wired end-to-end against the live Open Brain database,
+plus a single bulk-ops lane (bulk delete) so the capability is
+proven rather than scaffolded.
+
+See `docs/plans/2026-04-11-dashboard-v1.5-master-detail-design.md`
+for the full design rationale and `CLAUDE.md` in this directory for
+the binding design principles.
 
 **Next resume point:** deploy the binary to node-0 as a fourth
 docker-compose service behind Caddy at `http://open-brain-ui/` (or
-similar). See "Deployment Modes" below for the target layout.
+similar). See "Deployment Modes" below for the target layout. A
+latent issue to address before deployment: `server.go` serves static
+assets via `http.FileServer(http.Dir("static"))`, which means the
+binary must be run from the dashboard directory. For containerized
+deployment, either mount the `static` directory as a volume or add
+a `//go:embed static` directive so the assets ship inside the
+binary.
 
 ## What It Does
 
-| Page / Action | State | Purpose |
-|---------------|-------|---------|
-| Home | **working** | Stats overview (total, this week, by type, top topics), most recent captures, and an inline collapsible quick-capture form at the top of the page |
-| Capture | **working** | `<details>`-collapsible form on the home page. Writes a new thought via `ollama.Embed` + DB insert. Fields match the edit form. No LLM-based auto-extraction — manual metadata is fast and the user is already engaged. `metadata.source = "dashboard"` for provenance. |
-| Detail | **working** | Single-thought view with full metadata, action items with priority chips, dates mentioned, and a raw-JSON disclosure. Shows "edited X ago" when the thought has been modified via the dashboard. |
-| Browse | **working** | Paginated filtered list — type chip row, topic/person/content-substring inputs, time window dropdown, pagination with filter preservation |
-| Search | **working** | Semantic (pgvector cosine) and text (ILIKE) modes with a mode-toggle switch, similarity badges on semantic results, and a graceful text-mode fallback when semantic embedding fails |
-| Edit | **working** | Dedicated edit form at `/thought/{id}/edit` for content (textarea), type (select), topics and people (comma-separated), and action items (dynamic rows with description + priority). Content changes trigger a sync re-embed via Ollama; metadata-only edits skip Ollama entirely. Update timestamps are stored at `metadata.updated_at`. Action items are always written in the normalized `{description, priority}` object shape, forward-migrating any string-shape items on first edit. |
-| Delete | **working** | `POST /thought/{id}/delete` with browser-native confirm. 303-redirects to the home page and decrements the total count. |
+The v1.5 shell replaces every v1.1 page with a single route `/` that
+renders three panes: filter sidebar, thought list, detail. Every
+interaction is a partial htmx swap targeting one pane, URL-pushed
+so bookmarks and back/forward work.
 
-v2 adds duplicates, audit, and ingestion queue — features that require
-their own new tables but never alter the existing `thoughts` table.
-Eventual candidate for a Gmail-style master/detail two-pane layout
-refactor once bulk operations arrive.
+| Area | State | Purpose |
+|---|---|---|
+| Shell | **working** | CSS-grid three-pane layout (`sidebar` · `list` · `detail`) sized in `fr` + fixed widths. Mobile falls back to a single column below 1216 px. Dark is default; light palette ships alongside and toggles via the sidebar footer's theme button (localStorage-backed). |
+| Filter sidebar | **working** | Type chips with counts, time-window chips (All / 7d / 30d / 90d), top-10 topics, top-10 people. Clicking a chip pushes the filter into the URL, clicking an active chip clears it. Every anchor has a real `href` for progressive-enhancement — JS-off users still get filtered shell loads. |
+| List pane | **working** | Dense two-line rows (~50 per 1080p screen) with type chip, relative time, id, and truncated content. Row click loads the thought into the detail pane. Semantic search is one box at the top with automatic text-fallback when Ollama is unavailable or returns no matches. An Ollama health dot next to the search box reflects the last embed outcome (green / amber / grey). Pagination is bookmarkable. |
+| Detail pane: read | **working** | Full content, topic/person tags linked back to filter URLs, action items with priority chips, raw metadata disclosure, Edit and Delete buttons. Shows "captured X ago" and "edited X ago" when applicable. |
+| Detail pane: edit | **working** | Right-pane swap (not a modal): textarea + type select + CSV topics/people + dynamic action-item rows. Save POSTs to `/thought/{id}/edit`; on htmx the response is a fragment + `HX-Trigger: refresh-row-N` so the corresponding list row re-fetches itself. Cancel restores the read view. JS-off fallback is the same POST with 303-to-read. Ollama embed is recomputed only when content text changes. |
+| Compose panel | **working** | Gmail-style floating `<dialog>` sibling of the shell. Opens bottom-right in compact mode (non-blocking), can expand to modal (dimmed backdrop) and back. Minimize collapses to the title bar via `<details>`. Esc and backdrop-click both contract to compact — your draft survives anything except explicit close. Save clears the slot and fires `HX-Trigger: refresh-list, focus-thought-{id}` so the list refreshes and the new thought lands in the detail pane. Error path re-renders the panel with typed input preserved. |
+| Bulk delete | **working** | Row checkboxes with a three-state toolbar (normal / bulk / confirm) switched via CSS `:has()` — no client state tracking. Clicking Delete selected swaps to an inline confirm ("Delete N thoughts? This is permanent."); Yes, delete POSTs `ids[]` to `/bulk-delete` via `hx-include="#list-form"`. Deletion is immediate and permanent — no undo window. If the currently-open thought is in the deleted set, the response emits `HX-Trigger: clear-detail` and `HX-Push-Url` to strip `?id=` from the URL. |
+| Legacy redirects | **working** | v1.1 URLs (`/home`, `/browse?…`, `/search?q=…&mode=…`, `/thought/{id}`, GET `/thought/{id}/edit`) all 303-redirect into the new `/?…` shape. The `mode=` parameter is dropped silently — v1.5 has no mode toggle. POST `/thought/{id}/edit` and POST `/thought/{id}/delete` stay as write endpoints. |
+
+**v2 candidates** (not in v1.5): "select all matching" beyond the
+visible page, bulk re-embed, bulk tag/type edit, search operators
+(`"quoted"` substring), compose draft persistence, undo window,
+keyboard shortcuts, similarity threshold for the semantic/text
+fallback path, phone-specific layout refinements, numbered
+pagination with ellipsis elision.
 
 ## URL Surface
 
 ```
-GET  /                              home (stats + recent + capture form)
-POST /capture                       quick-capture from home form
-GET  /browse[?type=&topic=&person=&q=&days=&page=]
-GET  /search[?q=&mode=semantic|text&page=]
-GET  /thought/{id}                  readonly detail
-GET  /thought/{id}/edit             edit form
-POST /thought/{id}/edit             update handler (content + metadata + action items)
-POST /thought/{id}/delete           delete handler
-GET  /partials/action-item-row      htmx fragment: blank action-item row
+GET  /                                 shell (query params drive state)
+     ?type=&topic=&person=&days=&q=&id=&page=
+
+GET  /partials/list?…                  list pane fragment
+GET  /partials/detail/{id}?…           detail pane read fragment
+GET  /partials/detail/{id}/edit?…      detail pane edit form fragment
+GET  /partials/detail/empty            empty detail placeholder
+GET  /partials/row/{id}?…              single list-row fragment (for refresh-row-N trigger)
+GET  /partials/compose                 floating compose dialog fragment
+DEL  /partials/compose                 clear the compose slot
+GET  /partials/action-item-row         blank action-item row fragment
+
+POST /capture                          save a new thought from compose
+POST /thought/{id}/edit                update handler (content + metadata + action items)
+POST /thought/{id}/delete              delete handler
+POST /bulk-delete                      batch delete from selected ids
+
+GET  /home                             303 → /
+GET  /browse?…                         303 → /?…
+GET  /search?q=…&mode=…                303 → /?q=… (mode dropped)
+GET  /thought/{id}                     303 → /?id={id}
+GET  /thought/{id}/edit                303 → /?id={id}&mode=edit
 ```
 
-Capture, update, and delete are classic POST-redirect-GET flows — the
-dashboard's write paths work with JavaScript disabled. The only feature
-that requires JavaScript is the "+ add action item" button in the edit
-form, which uses htmx to append a row fragment. Removing an action item
-is plain inline JS (`this.closest('.action-item-row').remove();`) and
-the edit form's submit drops empty rows server-side, so "remove" works
-without JS too — just clear the description and save.
+Every write path works with JavaScript disabled: forms have real
+`action=` attributes, POSTs return 303 redirects on non-htmx
+requests. htmx is progressive enhancement over POST-redirect-GET,
+not a prerequisite.
 
 ## Home Page Data Model
 
