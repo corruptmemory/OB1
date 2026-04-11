@@ -23,13 +23,12 @@ the binding design principles.
 
 **Next resume point:** deploy the binary to node-0 as a fourth
 docker-compose service behind Caddy at `http://open-brain-ui/` (or
-similar). See "Deployment Modes" below for the target layout. A
-latent issue to address before deployment: `server.go` serves static
-assets via `http.FileServer(http.Dir("static"))`, which means the
-binary must be run from the dashboard directory. For containerized
-deployment, either mount the `static` directory as a volume or add
-a `//go:embed static` directive so the assets ship inside the
-binary.
+similar). See "Deployment Modes" below for the target layout. The
+binary is genuinely self-contained — every static asset (`tokens.css`,
+`app.css`, `static/js/app.js`, `static/vendor/htmx.min.js`) ships
+inside the compiled binary via `//go:embed static`, so the container
+only needs to copy the binary itself and run it from any working
+directory.
 
 ## What It Does
 

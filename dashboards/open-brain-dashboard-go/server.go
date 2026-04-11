@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -15,6 +17,17 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5"
 )
+
+// staticFS embeds the entire static/ tree (tokens.css, app.css,
+// static/js/app.js, static/vendor/htmx.min.js) into the binary at
+// compile time. The build.sh script runs ensure_htmx before go build
+// so the vendored htmx.min.js is always on disk when this embed fires.
+// Serving via http.FS(staticFS) means the binary is fully self-contained
+// and can run from any working directory — critical for the node-0
+// containerized deployment.
+//
+//go:embed static
+var staticFS embed.FS
 
 type Server struct {
 	router *chi.Mux
@@ -57,10 +70,18 @@ func NewServer(db *DB, ollama *OllamaClient, health *OllamaHealth) *Server {
 	s.router.Get("/thought/{id}", s.handleLegacyThought)
 	s.router.Get("/thought/{id}/edit", s.handleLegacyThoughtEdit)
 
-	// Static files (tokens.css, app.css, vendor/htmx.min.js, ...) served flat
-	// under /static/ to match the thought-store convention.
-	fs := http.FileServer(http.Dir("static"))
-	s.router.Handle("/static/*", http.StripPrefix("/static/", fs))
+	// Static files (tokens.css, app.css, vendor/htmx.min.js, ...) served
+	// flat under /static/ from the embedded FS. fs.Sub strips the
+	// "static" directory prefix so /static/app.css resolves to the
+	// embedded static/app.css entry without any path-juggling.
+	staticRoot, err := fs.Sub(staticFS, "static")
+	if err != nil {
+		// fs.Sub only fails on a programmer error (empty prefix or
+		// invalid path); panic is correct here because it means the
+		// binary itself is broken.
+		panic(fmt.Sprintf("embed static subtree: %v", err))
+	}
+	s.router.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.FS(staticRoot))))
 
 	return s
 }
