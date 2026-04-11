@@ -21,14 +21,13 @@ See `docs/plans/2026-04-11-dashboard-v1.5-master-detail-design.md`
 for the full design rationale and `CLAUDE.md` in this directory for
 the binding design principles.
 
-**Next resume point:** deploy the binary to node-0 as a fourth
-docker-compose service behind Caddy at `http://open-brain-ui/` (or
-similar). See "Deployment Modes" below for the target layout. The
-binary is genuinely self-contained — every static asset (`tokens.css`,
-`app.css`, `static/js/app.js`, `static/vendor/htmx.min.js`) ships
-inside the compiled binary via `//go:embed static`, so the container
-only needs to copy the binary itself and run it from any working
-directory.
+**Next resume point:** deploy the binary to node-0 as a plain
+systemd unit under `/opt/open-brain-dashboard-go/` (mirroring the
+existing `/opt/weather-station/` pattern), fronted by a Caddy route
+at `http://open-brain-ui/` (or similar). See "Deployment Modes"
+below for the target layout. Thanks to `//go:embed static`, the
+binary is genuinely self-contained — no Docker required, no volume
+mounts, no image builds.
 
 ## What It Does
 
@@ -160,10 +159,48 @@ port to be exposed on the LAN in your docker-compose stack (see the main
 `docker-compose.yml` comment above the `ports:` block on the `ollama`
 service).
 
-**Prod (node-0):** runs as a fourth docker-compose service alongside
-`db`, `ollama`, and `mcp-server`, bound to `127.0.0.1:8080` behind Caddy at
-`http://open-brain-ui/` (or equivalent). The compose wiring for this lands
-alongside the real feature handlers, not in the v0 scaffold.
+**Prod (node-0):** the binary ships as a single self-contained
+executable with every static asset embedded via `//go:embed static`,
+so deployment is a plain systemd unit — no Docker ceremony required.
+This matches the existing `/opt/weather-station/` pattern on node-0.
+Rough shape:
+
+```
+/opt/open-brain-dashboard-go/
+  open-brain-dashboard-go          # scp'd from a desktop build
+  open-brain-dashboard-go.toml     # db/ollama URLs → 127.0.0.1 loopback
+```
+
+```ini
+# /etc/systemd/system/open-brain-dashboard-go.service
+[Unit]
+Description=Open Brain Dashboard (Go)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=open-brain
+WorkingDirectory=/opt/open-brain-dashboard-go
+ExecStart=/opt/open-brain-dashboard-go/open-brain-dashboard-go serve --config /opt/open-brain-dashboard-go/open-brain-dashboard-go.toml
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Plus a Caddy route on node-0 fronting `http://open-brain-ui/` (or
+similar hostname) to the dashboard's listen port, alongside the
+existing routes for `open-brain`, `home-photos`, `home-server`, and
+`weather-station`. The dashboard's config points `database.url` and
+`ollama.url` at `127.0.0.1` because the open-brain docker-compose
+stack already exposes Postgres on `5432` and Ollama on `11434` on
+loopback — no container network gymnastics needed.
+
+Updates are `scp` the new binary, `systemctl restart
+open-brain-dashboard-go`. No image builds, no registry, no volume
+mounts.
 
 ## Layout
 
