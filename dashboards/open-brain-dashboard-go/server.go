@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -44,6 +46,8 @@ func NewServer(db *DB, ollama *OllamaClient) *Server {
 	s.router.Get("/partials/detail/{id}", s.handlePartialDetail)
 	s.router.Get("/partials/detail/{id}/edit", s.handlePartialDetailEdit)
 	s.router.Get("/partials/row/{id}", s.handlePartialRow)
+	s.router.Get("/partials/compose", s.handlePartialCompose)
+	s.router.Delete("/partials/compose", s.handlePartialComposeClose)
 
 	// Static files (tokens.css, app.css, vendor/htmx.min.js, ...) served flat
 	// under /static/ to match the thought-store convention.
@@ -393,7 +397,13 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
+	isHTMX := r.Header.Get("HX-Request") == "true"
+
 	if err := r.ParseForm(); err != nil {
+		if isHTMX {
+			writeComposeError(w, "parse form: "+err.Error())
+			return
+		}
 		http.Error(w, "parse form: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -401,6 +411,10 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 	content := strings.TrimSpace(r.FormValue("content"))
 	typ := strings.TrimSpace(r.FormValue("type"))
 	if content == "" {
+		if isHTMX {
+			writeComposeError(w, "content cannot be empty")
+			return
+		}
 		http.Error(w, "content cannot be empty", http.StatusBadRequest)
 		return
 	}
@@ -410,6 +424,10 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 
 	embedding, err := s.ollama.Embed(r.Context(), content)
 	if err != nil {
+		if isHTMX {
+			writeComposeError(w, "embed failed: "+err.Error()+" (Ollama unreachable? try again in a moment)")
+			return
+		}
 		http.Error(w, "embed failed: "+err.Error()+" (Ollama unreachable? try again in a moment)", http.StatusServiceUnavailable)
 		return
 	}
@@ -422,11 +440,56 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 		Embedding: embedding,
 	})
 	if err != nil {
+		if isHTMX {
+			writeComposeError(w, "create: "+err.Error())
+			return
+		}
 		http.Error(w, "create: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	if isHTMX {
+		// Close the compose slot (empty body via innerHTML swap) and
+		// trigger the refresh-list + focus-thought chain handled by
+		// app.js listeners on document.body.
+		w.Header().Set("HX-Trigger", fmt.Sprintf(`{"refresh-list": {}, "focus-thought": {"id": %d}}`, id))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	http.Redirect(w, r, "/thought/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+// writeComposeError renders a minimal error fragment into #compose-slot
+// so the user sees what went wrong without losing the dialog chrome.
+// Task 10b replaces this with a ComposeWithDraft template that also
+// preserves the form fields.
+func writeComposeError(w http.ResponseWriter, msg string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w,
+		`<dialog class="compose-dialog" id="compose-dialog" open>`+
+			`<div class="compose-header"><span class="compose-title">Error</span>`+
+			`<div class="compose-controls">`+
+			`<button type="button" class="btn-icon" hx-delete="/partials/compose" hx-target="#compose-slot" hx-swap="innerHTML" title="Close">×</button>`+
+			`</div></div>`+
+			`<div class="compose-form"><div class="form-error">%s</div></div>`+
+			`</dialog>`,
+		html.EscapeString(msg),
+	)
+}
+
+func (s *Server) handlePartialCompose(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.Compose().Render(r.Context(), w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handlePartialComposeClose(w http.ResponseWriter, r *http.Request) {
+	// Empty body clears #compose-slot via innerHTML swap.
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
 }
 
 func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {

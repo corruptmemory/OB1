@@ -1608,3 +1608,91 @@ a:hover {
 	white-space: pre-wrap;
 	word-break: break-word;
 }
+
+/* ---- v1.5 compose panel ---- */
+
+.compose-dialog {
+	position: fixed;
+	bottom: 0;
+	right: var(--space-5);
+	margin: 0;
+	width: 34rem;
+	max-height: 34rem;
+	padding: 0;
+	background: var(--bg-elevated);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+	box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.3);
+	color: var(--fg);
+	font-family: var(--font-sans);
+	display: flex;
+	flex-direction: column;
+	z-index: 100;
+}
+.compose-dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+
+.compose-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: var(--space-2) var(--space-4);
+	background: var(--bg-raised);
+	border-bottom: 1px solid var(--border);
+}
+.compose-title { font-weight: 600; font-size: 0.9rem; }
+.compose-controls { display: flex; gap: var(--space-1); }
+
+.compose-form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-3);
+	padding: var(--space-4);
+	overflow-y: auto;
+}
+.compose-form .edit-textarea {
+	flex: 1;
+	min-height: 10rem;
+}
+
+.compose-form .form-error {
+	background: var(--bg);
+	border: 1px solid var(--danger);
+	color: var(--danger);
+	border-radius: var(--radius);
+	padding: var(--space-3) var(--space-4);
+	font-size: 0.9rem;
+}
+
+/* Modal mode — Task 10b adds the body. Keep the class here so the
+   structural CSS doesn't need re-touching. */
+.compose-dialog.compose-modal {
+	bottom: auto;
+	right: auto;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	width: 50rem;
+	max-height: 90vh;
+	border-radius: var(--radius-lg);
+}
+
+.compose-dialog.compose-minimized .compose-form { display: none; }
+.compose-dialog.compose-minimized { max-height: 3rem; }
+
+/* Mobile: bottom-sheet compact, fullscreen modal. */
+@media (max-width: 860px) {
+	.compose-dialog {
+		width: 100vw;
+		right: 0;
+		border-radius: 0;
+	}
+	.compose-dialog.compose-modal {
+		top: 0;
+		left: 0;
+		width: 100vw;
+		height: 100vh;
+		max-height: 100vh;
+		transform: none;
+		border-radius: 0;
+	}
+}
