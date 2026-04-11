@@ -7,11 +7,11 @@ import (
 
 func TestBuildListQuery(t *testing.T) {
 	cases := []struct {
-		name         string
-		filters      ListFilters
-		hasEmbedding bool
-		wantSubstr   []string
-		wantArgLen   int
+		name       string
+		filters    ListFilters
+		withVector bool
+		wantSubstr []string
+		wantArgLen int
 	}{
 		{
 			name:       "no filters, no query",
@@ -32,21 +32,21 @@ func TestBuildListQuery(t *testing.T) {
 			wantArgLen: 3,
 		},
 		{
-			name:         "q triggers ILIKE in non-semantic mode",
-			filters:      ListFilters{Q: "deployment", Page: 1, PerPage: 50},
-			hasEmbedding: false,
-			wantSubstr:   []string{"content ILIKE '%' || $1 || '%'"},
-			wantArgLen:   3,
+			name:       "q triggers ILIKE in non-semantic mode",
+			filters:    ListFilters{Q: "deployment", Page: 1, PerPage: 50},
+			withVector: false,
+			wantSubstr: []string{"content ILIKE '%' || $1 || '%'"},
+			wantArgLen: 3,
 		},
 		{
-			name:         "q with embedding uses pgvector distance",
-			filters:      ListFilters{Q: "deployment", Page: 1, PerPage: 50},
-			hasEmbedding: true,
-			wantSubstr:   []string{"1 - (embedding <=> $1)", "ORDER BY embedding <=> $1", "embedding IS NOT NULL"},
+			name:       "q with embedding uses pgvector distance",
+			filters:    ListFilters{Q: "deployment", Page: 1, PerPage: 50},
+			withVector: true,
+			wantSubstr: []string{"1 - (embedding <=> $1)", "ORDER BY embedding <=> $1", "embedding IS NOT NULL"},
 			// In semantic mode, Q is used by the caller to compute the
 			// embedding vector (prepended at $1) and is NOT added as a
 			// SQL arg by buildListQuery. The ILIKE branch only fires
-			// when !hasEmbedding. So args = [LIMIT, OFFSET] = 2.
+			// when !withVector. So args = [LIMIT, OFFSET] = 2.
 			wantArgLen: 2,
 		},
 		{
@@ -65,7 +65,7 @@ func TestBuildListQuery(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			sql, args := buildListQuery(tc.filters, tc.hasEmbedding)
+			sql, args := buildListQuery(tc.filters, tc.withVector)
 			for _, sub := range tc.wantSubstr {
 				if !strings.Contains(sql, sub) {
 					t.Errorf("sql missing %q\nactual:\n%s", sub, sql)
