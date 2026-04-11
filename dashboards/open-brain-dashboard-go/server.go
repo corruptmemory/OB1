@@ -20,13 +20,15 @@ type Server struct {
 	router *chi.Mux
 	db     *DB
 	ollama *OllamaClient
+	health *OllamaHealth
 }
 
-func NewServer(db *DB, ollama *OllamaClient) *Server {
+func NewServer(db *DB, ollama *OllamaClient, health *OllamaHealth) *Server {
 	s := &Server{
 		router: chi.NewRouter(),
 		db:     db,
 		ollama: ollama,
+		health: health,
 	}
 	s.router.Use(middleware.Logger)
 	s.router.Use(middleware.Recoverer)
@@ -64,14 +66,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // endpoint. Callers pass the user's search query; the method returns
 // the vector on success or nil on any failure (Ollama down, network
 // blip, non-200 response, etc.), which is the contract DB.Search
-// expects to decide between the semantic and text-only paths. Task 11
-// wraps this in an actor-pattern health tracker; for now it's a thin
-// pass-through.
+// expects to decide between the semantic and text-only paths. Every
+// call reports up/down to the OllamaHealth actor so the list
+// toolbar's status dot reflects reality.
 func (s *Server) embed(ctx context.Context, q string) []float32 {
 	emb, err := s.ollama.Embed(ctx, q)
 	if err != nil {
+		s.health.RecordDown()
 		return nil
 	}
+	s.health.RecordUp()
 	return emb
 }
 
@@ -129,7 +133,7 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 	listData := templates.ListData{
 		Result:       result,
 		SelectedID:   selectedID,
-		OllamaStatus: "grey", // Task 11 will populate from an actor
+		OllamaStatus: s.health.Status(),
 	}
 
 	// Detail pane: when ?id=N is present and the lookup succeeds, render
@@ -266,7 +270,7 @@ func (s *Server) handlePartialList(w http.ResponseWriter, r *http.Request) {
 	vm := templates.ListData{
 		Result:       result,
 		SelectedID:   selectedIDFromQuery(r),
-		OllamaStatus: "grey", // Task 11 will populate from an actor
+		OllamaStatus: s.health.Status(),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.List(vm).Render(ctx, w); err != nil {

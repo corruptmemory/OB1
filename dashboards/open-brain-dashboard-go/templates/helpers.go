@@ -160,6 +160,20 @@ func withPerson(f ListFilters, p string) ListFilters { f.Person = p; return f }
 // set is usually smaller than the page we were on.
 func resetPage(f ListFilters) ListFilters { f.Page = 0; return f }
 
+// ollamaTooltip returns user-facing hover text for the list toolbar's
+// health dot. Avoids leaking the CSS class name (e.g. "embeddings:
+// grey") into the user-visible tooltip.
+func ollamaTooltip(status string) string {
+	switch status {
+	case "green":
+		return "embeddings available"
+	case "amber":
+		return "embeddings unavailable"
+	default:
+		return "embeddings: not yet checked"
+	}
+}
+
 // rowClass returns the list-row class string, adding --selected when
 // the row's id matches the currently-open detail pane.
 func rowClass(id int64, selectedID int64) string {

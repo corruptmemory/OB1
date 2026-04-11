@@ -66,18 +66,24 @@ func runServe(cmd ServeCmd) error {
 		cfg.Server.Listen = cmd.Listen
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	// Server-lifetime context used by background goroutines (like the
+	// OllamaHealth actor) so they exit cleanly when runServe returns.
+	serverCtx, cancelServer := context.WithCancel(context.Background())
+	defer cancelServer()
 
-	db, err := NewDB(ctx, cfg.Database.URL)
+	dbCtx, cancelDB := context.WithTimeout(serverCtx, 10*time.Second)
+	defer cancelDB()
+
+	db, err := NewDB(dbCtx, cfg.Database.URL)
 	if err != nil {
 		return fmt.Errorf("database: %w", err)
 	}
 	defer db.Close()
 
 	ollama := NewOllamaClient(cfg.Ollama.URL, cfg.Ollama.EmbeddingModel)
+	health := NewOllamaHealth(serverCtx)
 
-	srv := NewServer(db, ollama)
+	srv := NewServer(db, ollama, health)
 
 	httpSrv := &http.Server{
 		Addr:              cfg.Server.Listen,

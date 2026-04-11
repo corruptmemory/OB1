@@ -25,7 +25,7 @@ templ List(ld ListData) {
 				@hiddenFilters(ld.Result.Filter)
 			</form>
 			<span class={ "ollama-dot", "ollama-dot--" + ld.OllamaStatus }
-				title={ "embeddings: " + ld.OllamaStatus }></span>
+				title={ ollamaTooltip(ld.OllamaStatus) }></span>
 			<div class="list-count">
 				if ld.Result.Filter.Q != "" {
 					{ fmt.Sprintf("%d thoughts for %q", ld.Result.Total, ld.Result.Filter.Q) }
