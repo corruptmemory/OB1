@@ -21,7 +21,10 @@ type EditFormData struct {
 
 var editableTypes = []string{"observation", "task", "idea", "reference", "person_note"}
 
-templ DetailEdit(data EditFormData) {
+// DetailEditV11 is the v1.1 full-page edit form, rendered by the legacy
+// /thought/{id}/edit route. Task 14 deletes it when /v15 flips to /.
+// The v1.5 in-pane edit form is DetailEdit in detail_pane.templ.
+templ DetailEditV11(data EditFormData) {
 	@Layout(fmt.Sprintf("Edit #%d — Open Brain", data.Thought.ID)) {
 		<header class="app-header">
 			<h1 class="app-title">Open Brain</h1>

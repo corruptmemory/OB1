@@ -107,3 +107,94 @@ templ DetailRead(d *ThoughtDetail, current ListFilters) {
 		</details>
 	</div>
 }
+
+// DetailEdit is the v1.5 in-pane edit form, rendered into #detail-pane
+// by /partials/detail/{id}/edit and by the htmx branch of
+// POST /thought/{id}/edit on error. Save posts to the same handler,
+// which on success returns DetailRead + HX-Trigger: refresh-row-{id}
+// so the list row re-fetches itself.
+//
+// The v1.1 full-page DetailEdit still exists as DetailEditV11 until
+// Task 14 deletes it and the non-htmx fallback path. This template
+// reuses the existing ActionItemRow from partials.templ and the
+// existing .edit-* and .action-item-* CSS classes; it only adds the
+// detail-toolbar-compatible header and a form-error banner.
+templ DetailEdit(d *ThoughtDetail, current ListFilters, formErr string) {
+	<div class="detail-inner">
+		<div class="detail-toolbar">
+			<span class="detail-edit-mode">editing #{ fmt.Sprintf("%d", d.ID) }</span>
+			<div class="toolbar-spacer"></div>
+			<a class="btn-secondary"
+				href={ templ.SafeURL(fmt.Sprintf("/v15?%s&id=%d", filtersToURL(current), d.ID)) }
+				hx-get={ fmt.Sprintf("/partials/detail/%d?%s", d.ID, filtersToURL(current)) }
+				hx-target="#detail-pane"
+				hx-push-url="true"
+			>Cancel</a>
+		</div>
+		if formErr != "" {
+			<div class="edit-error">
+				<strong>couldn't save:</strong> { formErr }
+			</div>
+		}
+		<form class="edit-form"
+			method="post"
+			action={ templ.SafeURL(fmt.Sprintf("/thought/%d/edit", d.ID)) }
+			hx-post={ fmt.Sprintf("/thought/%d/edit", d.ID) }
+			hx-target="#detail-pane"
+			hx-swap="innerHTML"
+		>
+			<input type="hidden" name="return_filters" value={ filtersToURL(current) }/>
+			<label class="edit-field">
+				<span class="edit-label">content</span>
+				<textarea name="content" rows="12" class="edit-textarea" required>{ d.Content }</textarea>
+			</label>
+			<div class="edit-row">
+				<label class="edit-field">
+					<span class="edit-label">type</span>
+					<select name="type" class="edit-select">
+						@editTypeOption("observation", d.Type)
+						@editTypeOption("task", d.Type)
+						@editTypeOption("idea", d.Type)
+						@editTypeOption("reference", d.Type)
+						@editTypeOption("person_note", d.Type)
+					</select>
+				</label>
+			</div>
+			<label class="edit-field">
+				<span class="edit-label">topics <span class="edit-hint">(comma separated)</span></span>
+				<input type="text" name="topics" value={ joinCSV(d.Topics) } class="edit-input"/>
+			</label>
+			<label class="edit-field">
+				<span class="edit-label">people <span class="edit-hint">(comma separated)</span></span>
+				<input type="text" name="people" value={ joinCSV(d.People) } class="edit-input"/>
+			</label>
+			<div class="edit-field">
+				<span class="edit-label">action items</span>
+				<ul id="action-items-list" class="action-items-list">
+					for _, item := range d.ActionItems {
+						@ActionItemRow(item)
+					}
+				</ul>
+				<button type="button"
+					class="action-item-add"
+					hx-get="/partials/action-item-row"
+					hx-target="#action-items-list"
+					hx-swap="beforeend"
+				>+ add action item</button>
+			</div>
+			<div class="edit-actions">
+				<button type="submit" class="edit-save">save</button>
+			</div>
+		</form>
+	</div>
+}
+
+// editTypeOption renders a <option> for the edit form's type select,
+// marking it selected when it matches the currently-stored type.
+templ editTypeOption(value, current string) {
+	if value == current {
+		<option value={ value } selected>{ value }</option>
+	} else {
+		<option value={ value }>{ value }</option>
+	}
+}

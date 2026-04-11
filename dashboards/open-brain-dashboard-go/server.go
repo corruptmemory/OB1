@@ -42,6 +42,8 @@ func NewServer(db *DB, ollama *OllamaClient) *Server {
 	s.router.Get("/v15", s.handleShell)
 	s.router.Get("/partials/list", s.handlePartialList)
 	s.router.Get("/partials/detail/{id}", s.handlePartialDetail)
+	s.router.Get("/partials/detail/{id}/edit", s.handlePartialDetailEdit)
+	s.router.Get("/partials/row/{id}", s.handlePartialRow)
 
 	// Static files (tokens.css, app.css, vendor/htmx.min.js, ...) served flat
 	// under /static/ to match the thought-store convention.
@@ -178,6 +180,63 @@ func (s *Server) handlePartialDetail(w http.ResponseWriter, r *http.Request) {
 	filters := parseListFilters(r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.DetailRead(detail, filters).Render(ctx, w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// handlePartialDetailEdit renders the v1.5 in-pane edit form into
+// #detail-pane. Triggered by the Edit button in DetailRead's toolbar.
+// Threads the current sidebar/list filter set through so Cancel
+// round-trips back to the same filtered context.
+func (s *Server) handlePartialDetailEdit(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	detail, err := s.db.ThoughtByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	filters := parseListFilters(r)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.DetailEdit(detail, filters, "").Render(ctx, w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// handlePartialRow renders a single list-row <li> so the
+// hx-trigger="refresh-row-{id} from:body" listener on that row can
+// replace itself with a fresh copy after an edit. Soft-fails to an
+// empty 200 response when the thought is gone so the row just
+// disappears.
+func (s *Server) handlePartialRow(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	detail, err := s.db.ThoughtByID(ctx, id)
+	if err != nil {
+		// Soft-fail: empty row makes the <li> vanish from the DOM.
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	// Project ThoughtDetail back down to the ThoughtData view model
+	// listRow expects. ThoughtDetail embeds ThoughtData so we can
+	// hand it over directly.
+	t := detail.ThoughtData
+	filters := parseListFilters(r)
+	selectedID := selectedIDFromQuery(r)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.ListRowStandalone(t, selectedID, filters).Render(ctx, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -464,7 +523,7 @@ func (s *Server) handleEditForm(w http.ResponseWriter, r *http.Request) {
 		TopicsInput:  templates.RenderableTopics(detail.Topics),
 		PeopleInput:  templates.RenderableTopics(detail.People),
 	}
-	if err := templates.DetailEdit(data).Render(r.Context(), w); err != nil {
+	if err := templates.DetailEditV11(data).Render(r.Context(), w); err != nil {
 		http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -494,11 +553,32 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	topicsRaw := r.FormValue("topics")
 	peopleRaw := r.FormValue("people")
 	actionItems := parseActionItems(r.Form)
+	isHTMX := r.Header.Get("HX-Request") == "true"
+	// v1.5 edit form carries the active sidebar/list filter set as a
+	// single URL-encoded string so we can re-render the list context
+	// around the saved thought. Non-htmx (v1.1) callers don't set it
+	// and that's fine — the 303 fallback lands on the plain detail
+	// page where filters don't matter.
+	v15Filters := parseFiltersFromReturnQuery(r.FormValue("return_filters"))
 
 	renderEditError := func(msg string) {
-		// Echo the user-edited thought back with ActionItems updated from
-		// the POST body so the re-rendered form shows what they just
-		// typed, not the pre-edit state.
+		if isHTMX {
+			// v1.5 in-pane: re-render DetailEdit with the user's
+			// in-progress values echoed back. ActionItems come from
+			// the parsed form; content/type/topics/people come from
+			// the ThoughtDetail we stamp below.
+			echo := *existing
+			echo.Content = content
+			echo.Type = typ
+			echo.Topics = parseCSVField(topicsRaw)
+			echo.People = parseCSVField(peopleRaw)
+			echo.ActionItems = actionItems
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = templates.DetailEdit(&echo, v15Filters, msg).Render(r.Context(), w)
+			return
+		}
+		// v1.1 full-page fallback.
 		echo := *existing
 		echo.ActionItems = actionItems
 		data := templates.EditFormData{
@@ -510,7 +590,7 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 			PeopleInput:  peopleRaw,
 		}
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		_ = templates.DetailEdit(data).Render(r.Context(), w)
+		_ = templates.DetailEditV11(data).Render(r.Context(), w)
 	}
 
 	if content == "" {
@@ -547,7 +627,82 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if isHTMX {
+		// Re-fetch the fresh row and return the DetailRead fragment
+		// plus HX-Trigger so the list row re-fetches itself, and
+		// HX-Push-Url so the address bar tracks the read view.
+		detail, derr := s.db.ThoughtByID(r.Context(), id)
+		if derr != nil {
+			http.Error(w, "reload thought: "+derr.Error(), http.StatusInternalServerError)
+			return
+		}
+		pushQuery := filtersToURLString(v15Filters)
+		pushURL := "/v15?id=" + strconv.FormatInt(id, 10)
+		if pushQuery != "" {
+			pushURL = "/v15?" + pushQuery + "&id=" + strconv.FormatInt(id, 10)
+		}
+		w.Header().Set("HX-Trigger", "refresh-row-"+strconv.FormatInt(id, 10))
+		w.Header().Set("HX-Push-Url", pushURL)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if rerr := templates.DetailRead(detail, v15Filters).Render(r.Context(), w); rerr != nil {
+			http.Error(w, "render: "+rerr.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
 	http.Redirect(w, r, "/thought/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+}
+
+// parseFiltersFromReturnQuery decodes the v1.5 edit form's
+// return_filters hidden input (a URL-encoded query string) back into
+// a ListFilters. Missing or malformed input returns a zero-value
+// struct, which renders as "no active filter".
+func parseFiltersFromReturnQuery(raw string) templates.ListFilters {
+	f := templates.ListFilters{PerPage: 50, Page: 1}
+	if raw == "" {
+		return f
+	}
+	v, err := url.ParseQuery(raw)
+	if err != nil {
+		return f
+	}
+	f.Type = v.Get("type")
+	f.Topic = v.Get("topic")
+	f.Person = v.Get("person")
+	f.Q = v.Get("q")
+	if d, err := strconv.Atoi(v.Get("days")); err == nil && d > 0 {
+		f.Days = d
+	}
+	if p, err := strconv.Atoi(v.Get("page")); err == nil && p > 0 {
+		f.Page = p
+	}
+	return f
+}
+
+// filtersToURLString is the exported form of the templates package's
+// internal filtersToURL helper — kept here so server.go can assemble
+// HX-Push-Url values without exporting the template-internal helper.
+func filtersToURLString(f templates.ListFilters) string {
+	v := url.Values{}
+	if f.Type != "" {
+		v.Set("type", f.Type)
+	}
+	if f.Topic != "" {
+		v.Set("topic", f.Topic)
+	}
+	if f.Person != "" {
+		v.Set("person", f.Person)
+	}
+	if f.Days > 0 {
+		v.Set("days", strconv.Itoa(f.Days))
+	}
+	if f.Q != "" {
+		v.Set("q", f.Q)
+	}
+	if f.Page > 1 {
+		v.Set("page", strconv.Itoa(f.Page))
+	}
+	return v.Encode()
 }
 
 // handleActionItemRow returns a single blank ActionItemRow HTML fragment

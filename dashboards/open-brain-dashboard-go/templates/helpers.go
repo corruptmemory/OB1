@@ -8,6 +8,13 @@ import (
 	"time"
 )
 
+// joinCSV joins a slice of strings with ", " for display in a form
+// CSV input. Nil slices return empty string. Used by the v1.5 in-pane
+// edit form's topics and people inputs.
+func joinCSV(xs []string) string {
+	return strings.Join(xs, ", ")
+}
+
 // Truncate shortens s to at most max runes, appending an ellipsis when it
 // had to cut. Used by the home page's recent-thoughts list so long captures
 // don't blow up the layout.

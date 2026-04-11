@@ -88,7 +88,11 @@ templ searchBanner(mode SearchResultMode) {
 }
 
 templ listRow(t ThoughtData, selectedID int64, current ListFilters) {
-	<li>
+	<li id={ fmt.Sprintf("row-%d", t.ID) }
+		hx-get={ fmt.Sprintf("/partials/row/%d?%s&id=%d", t.ID, filtersToURL(current), selectedID) }
+		hx-trigger={ fmt.Sprintf("refresh-row-%d from:body", t.ID) }
+		hx-swap="outerHTML"
+	>
 		<a class={ rowClass(t.ID, selectedID) }
 			href={ templ.SafeURL(fmt.Sprintf("/v15?%s&id=%d", filtersToURL(current), t.ID)) }
 			hx-get={ fmt.Sprintf("/partials/detail/%d?%s", t.ID, filtersToURL(current)) }
@@ -105,6 +109,13 @@ templ listRow(t ThoughtData, selectedID int64, current ListFilters) {
 			</div>
 		</a>
 	</li>
+}
+
+// ListRowStandalone renders a single <li> list row so the
+// /partials/row/{id} endpoint can return a drop-in outerHTML
+// replacement for the hx-trigger="refresh-row-{id}" listener.
+templ ListRowStandalone(t ThoughtData, selectedID int64, current ListFilters) {
+	@listRow(t, selectedID, current)
 }
 
 templ pagination(r *ListResult) {
