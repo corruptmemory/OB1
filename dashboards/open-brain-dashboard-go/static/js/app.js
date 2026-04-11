@@ -115,3 +115,42 @@ document.body.addEventListener("cancel", function (e) {
 		e.preventDefault();
 	}
 });
+
+// ---- v1.5 bulk delete helpers ----
+
+window.obSelectAll = function (el) {
+	document.querySelectorAll(".row-checkbox").forEach(function (c) { c.checked = el.checked; });
+	obUpdateBulkCount();
+};
+
+window.obClearSelection = function () {
+	document.querySelectorAll(".row-checkbox").forEach(function (c) { c.checked = false; });
+	const selAll = document.getElementById("select-all");
+	if (selAll) selAll.checked = false;
+	obUpdateBulkCount();
+	// Also exit confirm mode if we were in it.
+	const toolbar = document.querySelector(".list-toolbar");
+	if (toolbar) toolbar.removeAttribute("data-confirming");
+};
+
+window.obUpdateBulkCount = function () {
+	const n = document.querySelectorAll(".row-checkbox:checked").length;
+	document.querySelectorAll(".bulk-count").forEach(function (el) {
+		el.setAttribute("data-count", String(n));
+	});
+};
+
+document.addEventListener("change", function (e) {
+	if (e.target && e.target.matches && e.target.matches(".row-checkbox")) {
+		obUpdateBulkCount();
+	}
+});
+
+// clear-detail listener: fired from handleBulkDelete when the deleted
+// set included the currently-open thought. Swaps the detail pane to
+// the empty state.
+document.body.addEventListener("clear-detail", function () {
+	if (window.htmx) {
+		htmx.ajax("GET", "/partials/detail/empty", "#detail-pane");
+	}
+});

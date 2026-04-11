@@ -8,30 +8,54 @@ import "fmt"
 // the URL query string by the handler. Row click handlers point at
 // /partials/detail/{id}; Task 8 adds that endpoint.
 templ List(ld ListData) {
-	<div class="list-inner">
+	<div class="list-inner list-form-wrap" id="list-form">
 		<div class="list-toolbar">
-			<form class="search-form"
-				hx-get="/partials/list"
-				hx-target="#list-pane"
-				hx-push-url="true"
-				hx-trigger="input changed delay:300ms, keyup[key=='Enter'], search"
-				hx-include="[name=type],[name=topic],[name=person],[name=days]"
-			>
-				<input type="search" name="q" class="search-input"
-					value={ ld.Result.Filter.Q }
-					placeholder="Search…"
-					autocomplete="off"
-				/>
-				@hiddenFilters(ld.Result.Filter)
-			</form>
-			<span class={ "ollama-dot", "ollama-dot--" + ld.OllamaStatus }
-				title={ ollamaTooltip(ld.OllamaStatus) }></span>
-			<div class="list-count">
-				if ld.Result.Filter.Q != "" {
-					{ fmt.Sprintf("%d thoughts for %q", ld.Result.Total, ld.Result.Filter.Q) }
-				} else {
-					{ fmt.Sprintf("%d thoughts", ld.Result.Total) }
-				}
+			<label class="select-all-wrap" onclick="event.stopPropagation()">
+				<input type="checkbox" id="select-all" onclick="obSelectAll(this)"/>
+			</label>
+			<div class="toolbar-normal">
+				<form class="search-form"
+					hx-get="/partials/list"
+					hx-target="#list-pane"
+					hx-push-url="true"
+					hx-trigger="input changed delay:300ms, keyup[key=='Enter'], search"
+					hx-include="[name=type],[name=topic],[name=person],[name=days]"
+				>
+					<input type="search" name="q" class="search-input"
+						value={ ld.Result.Filter.Q }
+						placeholder="Search…"
+						autocomplete="off"
+					/>
+					@hiddenFilters(ld.Result.Filter)
+				</form>
+				<span class={ "ollama-dot", "ollama-dot--" + ld.OllamaStatus }
+					title={ ollamaTooltip(ld.OllamaStatus) }></span>
+				<div class="list-count">
+					if ld.Result.Filter.Q != "" {
+						{ fmt.Sprintf("%d thoughts for %q", ld.Result.Total, ld.Result.Filter.Q) }
+					} else {
+						{ fmt.Sprintf("%d thoughts", ld.Result.Total) }
+					}
+				</div>
+			</div>
+			<div class="toolbar-bulk">
+				<span class="bulk-count" data-count="0">selected</span>
+				<button type="button" class="btn-danger"
+					onclick="this.closest('.list-toolbar').setAttribute('data-confirming','true')"
+				>Delete selected</button>
+				<button type="button" class="btn-secondary" onclick="obClearSelection()">Clear</button>
+			</div>
+			<div class="toolbar-confirm">
+				<span>Delete selected thoughts? This is permanent.</span>
+				<button type="button" class="btn-danger"
+					hx-post="/bulk-delete"
+					hx-include="#list-form"
+					hx-target="#list-pane"
+					hx-swap="innerHTML"
+				>Yes, delete</button>
+				<button type="button" class="btn-secondary"
+					onclick="this.closest('.list-toolbar').removeAttribute('data-confirming')"
+				>Cancel</button>
 			</div>
 		</div>
 		@searchBanner(ld.Result.Mode)
@@ -89,10 +113,14 @@ templ searchBanner(mode SearchResultMode) {
 
 templ listRow(t ThoughtData, selectedID int64, current ListFilters) {
 	<li id={ fmt.Sprintf("row-%d", t.ID) }
+		class="list-row-wrapper"
 		hx-get={ fmt.Sprintf("/partials/row/%d?%s&id=%d", t.ID, filtersToURL(current), selectedID) }
 		hx-trigger={ fmt.Sprintf("refresh-row-%d from:body", t.ID) }
 		hx-swap="outerHTML"
 	>
+		<label class="row-checkbox-wrap" onclick="event.stopPropagation()">
+			<input type="checkbox" class="row-checkbox" name="ids" value={ fmt.Sprintf("%d", t.ID) }/>
+		</label>
 		<a class={ rowClass(t.ID, selectedID) }
 			href={ templ.SafeURL(fmt.Sprintf("/v15?%s&id=%d", filtersToURL(current), t.ID)) }
 			hx-get={ fmt.Sprintf("/partials/detail/%d?%s", t.ID, filtersToURL(current)) }

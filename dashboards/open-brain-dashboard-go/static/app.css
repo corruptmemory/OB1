@@ -1700,3 +1700,59 @@ a:hover {
 		border-radius: 0;
 	}
 }
+
+/* ---- v1.5 bulk delete toolbar ---- */
+
+.select-all-wrap {
+	padding: 0 var(--space-2);
+	display: flex;
+	align-items: center;
+}
+
+.toolbar-normal,
+.toolbar-bulk,
+.toolbar-confirm {
+	display: flex;
+	align-items: center;
+	gap: var(--space-3);
+	flex: 1;
+	min-width: 0;
+}
+
+/* State switching via CSS :has(). Default: show normal, hide bulk
+   and confirm. When any row checkbox is checked, flip to bulk.
+   When [data-confirming="true"] on the toolbar, flip to confirm. */
+.list-form-wrap:has(.row-checkbox:checked) .toolbar-normal { display: none; }
+.list-form-wrap:not(:has(.row-checkbox:checked)) .toolbar-bulk { display: none; }
+.list-toolbar .toolbar-confirm { display: none; }
+.list-toolbar[data-confirming="true"] .toolbar-normal,
+.list-toolbar[data-confirming="true"] .toolbar-bulk {
+	display: none;
+}
+.list-toolbar[data-confirming="true"] .toolbar-confirm {
+	display: flex;
+}
+
+.list-row-wrapper {
+	display: flex;
+	align-items: stretch;
+	padding: 0;
+	margin: 0;
+	border-bottom: 1px solid var(--border-muted);
+}
+.list-row-wrapper > .row-checkbox-wrap {
+	padding: var(--space-3) var(--space-3);
+	display: flex;
+	align-items: center;
+}
+.list-row-wrapper > .list-row {
+	flex: 1;
+	border-bottom: none; /* wrapper now owns the separator */
+}
+
+.bulk-count::before {
+	content: attr(data-count) " ";
+	font-weight: 600;
+}
+
+.btn-danger:hover { filter: brightness(1.1); }

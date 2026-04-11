@@ -43,7 +43,9 @@ func NewServer(db *DB, ollama *OllamaClient, health *OllamaHealth) *Server {
 	s.router.Post("/thought/{id}/delete", s.handleDelete)
 	s.router.Get("/partials/action-item-row", s.handleActionItemRow)
 	s.router.Get("/v15", s.handleShell)
+	s.router.Post("/bulk-delete", s.handleBulkDelete)
 	s.router.Get("/partials/list", s.handlePartialList)
+	s.router.Get("/partials/detail/empty", s.handlePartialDetailEmpty)
 	s.router.Get("/partials/detail/{id}", s.handlePartialDetail)
 	s.router.Get("/partials/detail/{id}/edit", s.handlePartialDetailEdit)
 	s.router.Get("/partials/row/{id}", s.handlePartialRow)
@@ -796,4 +798,94 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// handleBulkDelete parses an ids[] form field, runs BulkDelete, and
+// re-renders the list pane with the remaining rows. If the currently
+// open detail thought is in the deleted set, emits HX-Trigger:
+// clear-detail so the client clears that pane and HX-Push-Url to
+// strip the stale ?id= from the URL.
+func (s *Server) handleBulkDelete(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	idStrs := r.Form["ids"]
+	var ids []int64
+	for _, idStr := range idStrs {
+		if n, err := strconv.ParseInt(idStr, 10, 64); err == nil {
+			ids = append(ids, n)
+		}
+	}
+
+	if len(ids) > 0 {
+		if _, err := s.db.BulkDelete(ctx, ids); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Determine if the currently-open id was in the deleted set. ?id=
+	// may be in either the query string or the form, depending on how
+	// hx-include composed the request — check both.
+	selectedIDStr := r.URL.Query().Get("id")
+	if selectedIDStr == "" {
+		selectedIDStr = r.FormValue("id")
+	}
+	var selectedID int64
+	if selectedIDStr != "" {
+		selectedID, _ = strconv.ParseInt(selectedIDStr, 10, 64)
+	}
+	clearDetail := false
+	for _, id := range ids {
+		if id == selectedID {
+			clearDetail = true
+			break
+		}
+	}
+
+	// Re-render the list pane with current filters.
+	filters := parseListFilters(r)
+	var embedding []float32
+	if filters.Q != "" {
+		embedding = s.embed(ctx, filters.Q)
+	}
+	result, err := s.db.Search(ctx, filters, embedding)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	effectiveSelectedID := selectedID
+	if clearDetail {
+		effectiveSelectedID = 0
+		w.Header().Set("HX-Trigger", "clear-detail")
+		// Push a URL without ?id= so refresh doesn't resurrect the
+		// stale id.
+		pushURL := "/v15"
+		if qs := filtersToURLString(filters); qs != "" {
+			pushURL += "?" + qs
+		}
+		w.Header().Set("HX-Push-Url", pushURL)
+	}
+
+	vm := templates.ListData{
+		Result:       result,
+		SelectedID:   effectiveSelectedID,
+		OllamaStatus: s.health.Status(),
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.List(vm).Render(ctx, w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// handlePartialDetailEmpty renders the DetailEmpty placeholder for
+// the clear-detail trigger path.
+func (s *Server) handlePartialDetailEmpty(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.DetailEmpty().Render(r.Context(), w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
