@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/NateBJones-Projects/OB1/dashboards/open-brain-dashboard-go/templates"
+	"github.com/a-h/templ"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5"
@@ -40,6 +41,7 @@ func NewServer(db *DB, ollama *OllamaClient) *Server {
 	s.router.Get("/partials/action-item-row", s.handleActionItemRow)
 	s.router.Get("/v15", s.handleShell)
 	s.router.Get("/partials/list", s.handlePartialList)
+	s.router.Get("/partials/detail/{id}", s.handlePartialDetail)
 
 	// Static files (tokens.css, app.css, vendor/htmx.min.js, ...) served flat
 	// under /static/ to match the thought-store convention.
@@ -118,19 +120,64 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 		Active:    filters,
 	}
 
+	selectedID := selectedIDFromQuery(r)
 	listData := templates.ListData{
 		Result:       result,
-		SelectedID:   selectedIDFromQuery(r),
+		SelectedID:   selectedID,
 		OllamaStatus: "grey", // Task 11 will populate from an actor
+	}
+
+	// Detail pane: when ?id=N is present and the lookup succeeds, render
+	// the real DetailRead; otherwise fall back to DetailEmpty. We
+	// deliberately do NOT 500 the whole page when the id is stale or
+	// malformed — the list row just stops highlighting and the pane
+	// goes back to the placeholder. Direct navigation and page refresh
+	// stay bookmarkable.
+	var detailComponent templ.Component = templates.DetailEmpty()
+	if selectedID > 0 {
+		detail, derr := s.db.ThoughtByID(ctx, selectedID)
+		if derr == nil {
+			detailComponent = templates.DetailRead(detail, filters)
+		}
 	}
 
 	vm := templates.ShellViewModel{
 		Sidebar: templates.Sidebar(sidebarData),
 		List:    templates.List(listData),
-		Detail:  templates.PlaceholderDetail(),
+		Detail:  detailComponent,
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := templates.Shell(vm).Render(ctx, w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// handlePartialDetail renders just the #detail-pane contents for htmx
+// row-click swaps. The response is the raw detail-inner HTML — no
+// <html> wrapper — so htmx can swap it straight into #detail-pane
+// without re-rendering the shell. Filters from the query string are
+// threaded through so the Edit link round-trips the active sidebar
+// state.
+func (s *Server) handlePartialDetail(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	detail, err := s.db.ThoughtByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	filters := parseListFilters(r)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := templates.DetailRead(detail, filters).Render(ctx, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }

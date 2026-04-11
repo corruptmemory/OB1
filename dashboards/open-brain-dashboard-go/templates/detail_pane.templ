@@ -1,0 +1,109 @@
+package templates
+
+import (
+	"fmt"
+	"net/url"
+)
+
+// DetailEmpty is the placeholder rendered into #detail-pane when the
+// URL has no ?id=N selector. Terse, no decoration — clicking the
+// + New button pops the compose panel into #compose-slot.
+templ DetailEmpty() {
+	<div class="detail-inner detail-empty">
+		<p>Select a thought or create a new one.</p>
+		<button class="btn-secondary"
+			type="button"
+			hx-get="/partials/compose"
+			hx-target="#compose-slot"
+			hx-swap="innerHTML"
+		>+ New thought</button>
+	</div>
+}
+
+// DetailRead is the readonly view of a single thought rendered into
+// the right pane. The current sidebar/list filter set is threaded
+// through so the Edit link and the inline topic/person chip links
+// round-trip the active filter state back into the URL.
+templ DetailRead(d *ThoughtDetail, current ListFilters) {
+	<div class="detail-inner">
+		<div class="detail-toolbar">
+			<a class="btn-primary"
+				href={ templ.SafeURL(fmt.Sprintf("/v15?%s&id=%d&mode=edit", filtersToURL(current), d.ID)) }
+				hx-get={ fmt.Sprintf("/partials/detail/%d/edit?%s", d.ID, filtersToURL(current)) }
+				hx-target="#detail-pane"
+				hx-push-url="true"
+			>Edit</a>
+			<form class="inline-form"
+				method="post"
+				action={ templ.SafeURL(fmt.Sprintf("/thought/%d/delete", d.ID)) }
+				hx-post={ fmt.Sprintf("/thought/%d/delete", d.ID) }
+				hx-target="#detail-pane"
+				hx-confirm="Delete this thought?"
+			>
+				<button class="btn-danger" type="submit">Delete</button>
+			</form>
+		</div>
+		<header class="detail-header">
+			<span class={ TypeClass(d.Type) }>{ d.Type }</span>
+			<span class="detail-time">captured { HumanTime(d.CreatedAt) }</span>
+			if d.UpdatedAt != nil {
+				<span class="detail-edited">edited { HumanTime(*d.UpdatedAt) }</span>
+			}
+			<span class="detail-id">#{ fmt.Sprintf("%d", d.ID) }</span>
+		</header>
+		<div class="detail-content">{ d.Content }</div>
+		if len(d.Topics) > 0 {
+			<div class="detail-row">
+				<span class="detail-label">Topics:</span>
+				for _, topic := range d.Topics {
+					<a class="inline-tag"
+						href={ templ.SafeURL("/v15?topic=" + url.QueryEscape(topic)) }
+						hx-get={ "/partials/list?topic=" + url.QueryEscape(topic) }
+						hx-target="#list-pane"
+						hx-push-url="true"
+					>{ topic }</a>
+				}
+			</div>
+		}
+		if len(d.People) > 0 {
+			<div class="detail-row">
+				<span class="detail-label">People:</span>
+				for _, person := range d.People {
+					<a class="inline-tag"
+						href={ templ.SafeURL("/v15?person=" + url.QueryEscape(person)) }
+						hx-get={ "/partials/list?person=" + url.QueryEscape(person) }
+						hx-target="#list-pane"
+						hx-push-url="true"
+					>{ "@" + person }</a>
+				}
+			</div>
+		}
+		if len(d.ActionItems) > 0 {
+			<div class="detail-section">
+				<h4 class="detail-section-heading">Action items</h4>
+				<ul class="action-items-read">
+					for _, ai := range d.ActionItems {
+						<li>
+							if ai.Priority != "" {
+								<span class={ "priority-chip priority-" + ai.Priority }>{ ai.Priority }</span>
+							}
+							<span>{ ai.Description }</span>
+						</li>
+					}
+				</ul>
+			</div>
+		}
+		if len(d.DatesMentioned) > 0 {
+			<div class="detail-row">
+				<span class="detail-label">Dates mentioned:</span>
+				for _, dt := range d.DatesMentioned {
+					<span class="inline-tag">{ dt }</span>
+				}
+			</div>
+		}
+		<details class="detail-raw">
+			<summary>Raw metadata</summary>
+			<pre>{ string(d.RawMetadata) }</pre>
+		</details>
+	</div>
+}
