@@ -33,17 +33,10 @@ func NewServer(db *DB, ollama *OllamaClient, health *OllamaHealth) *Server {
 	s.router.Use(middleware.Logger)
 	s.router.Use(middleware.Recoverer)
 
-	s.router.Get("/", s.handleHome)
-	s.router.Get("/browse", s.handleBrowse)
-	s.router.Get("/search", s.handleSearch)
-	s.router.Post("/capture", s.handleCapture)
-	s.router.Get("/thought/{id}", s.handleDetail)
-	s.router.Get("/thought/{id}/edit", s.handleEditForm)
-	s.router.Post("/thought/{id}/edit", s.handleUpdate)
-	s.router.Post("/thought/{id}/delete", s.handleDelete)
-	s.router.Get("/partials/action-item-row", s.handleActionItemRow)
-	s.router.Get("/v15", s.handleShell)
-	s.router.Post("/bulk-delete", s.handleBulkDelete)
+	// v1.5 primary shell — serves /
+	s.router.Get("/", s.handleShell)
+
+	// v1.5 partials and write endpoints
 	s.router.Get("/partials/list", s.handlePartialList)
 	s.router.Get("/partials/detail/empty", s.handlePartialDetailEmpty)
 	s.router.Get("/partials/detail/{id}", s.handlePartialDetail)
@@ -51,6 +44,18 @@ func NewServer(db *DB, ollama *OllamaClient, health *OllamaHealth) *Server {
 	s.router.Get("/partials/row/{id}", s.handlePartialRow)
 	s.router.Get("/partials/compose", s.handlePartialCompose)
 	s.router.Delete("/partials/compose", s.handlePartialComposeClose)
+	s.router.Get("/partials/action-item-row", s.handleActionItemRow)
+	s.router.Post("/capture", s.handleCapture)
+	s.router.Post("/thought/{id}/edit", s.handleUpdate)
+	s.router.Post("/thought/{id}/delete", s.handleDelete)
+	s.router.Post("/bulk-delete", s.handleBulkDelete)
+
+	// Legacy 303 redirects for v1.1 URLs — keep bookmarks working.
+	s.router.Get("/home", s.handleLegacyHomeAlias)
+	s.router.Get("/browse", s.handleLegacyBrowse)
+	s.router.Get("/search", s.handleLegacySearch)
+	s.router.Get("/thought/{id}", s.handleLegacyThought)
+	s.router.Get("/thought/{id}/edit", s.handleLegacyThoughtEdit)
 
 	// Static files (tokens.css, app.css, vendor/htmx.min.js, ...) served flat
 	// under /static/ to match the thought-store convention.
@@ -97,10 +102,11 @@ func selectedIDFromQuery(r *http.Request) int64 {
 	return id
 }
 
-// handleShell is the v1.5 master/detail route. During cutover it lives
-// at /v15; Task 14 flips it to / and redirects the v1.1 routes. The
-// handler renders the sidebar and list panes with real data; the
-// detail pane stays a placeholder until Task 8 lands.
+// handleShell is the v1.5 master/detail route, served at /. It renders
+// the sidebar, list, and detail panes in one request — the detail pane
+// either echoes the thought named by ?id= or falls back to the empty
+// placeholder. Partial htmx swaps into each pane are handled by the
+// /partials/* routes.
 func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	filters := parseListFilters(r)
@@ -302,103 +308,47 @@ func parseListFilters(r *http.Request) templates.ListFilters {
 	return f
 }
 
-func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
-	data, err := s.db.HomeData(r.Context())
-	if err != nil {
-		http.Error(w, "home data: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := templates.Home(*data).Render(r.Context(), w); err != nil {
-		http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
-	}
+// handleLegacyHomeAlias handles /home by redirecting to /, which after
+// this cutover serves the v1.5 shell. Exists so anyone who bookmarked
+// /home during v1.1 still lands somewhere sensible.
+func (s *Server) handleLegacyHomeAlias(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-func (s *Server) handleBrowse(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	f := templates.BrowseFilter{
-		Type:   q.Get("type"),
-		Topic:  q.Get("topic"),
-		Person: q.Get("person"),
-		Q:      q.Get("q"),
+// handleLegacyBrowse redirects /browse?... to /?... — the v1.5 shell
+// reads the same query parameters the v1.1 browse page used.
+func (s *Server) handleLegacyBrowse(w http.ResponseWriter, r *http.Request) {
+	target := "/"
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
 	}
-	if daysStr := q.Get("days"); daysStr != "" {
-		if d, err := strconv.Atoi(daysStr); err == nil && d > 0 && d <= 3650 {
-			f.Days = d
-		}
-	}
-	page := 1
-	if pageStr := q.Get("page"); pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
-		}
-	}
-	data, err := s.db.Browse(r.Context(), f, page)
-	if err != nil {
-		http.Error(w, "browse: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := templates.Browse(*data).Render(r.Context(), w); err != nil {
-		http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
-	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
-func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
+// handleLegacySearch redirects /search?q=... to /?q=... — drops the
+// v1.1 ?mode= parameter since v1.5 uses automatic semantic/text
+// fallback without a toggle.
+func (s *Server) handleLegacySearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	query := q.Get("q")
-	mode := q.Get("mode")
-	if mode != "text" {
-		mode = "semantic"
+	q.Del("mode")
+	target := "/"
+	if encoded := q.Encode(); encoded != "" {
+		target += "?" + encoded
 	}
-	page := 1
-	if pageStr := q.Get("page"); pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
-		}
-	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
+}
 
-	// Empty query — just render the landing form, no queries run.
-	if query == "" {
-		data := templates.SearchData{Mode: mode}
-		if err := templates.Search(data).Render(r.Context(), w); err != nil {
-			http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
-		}
-		return
-	}
+// handleLegacyThought redirects /thought/{id} to /?id={id}.
+func (s *Server) handleLegacyThought(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	http.Redirect(w, r, "/?id="+id, http.StatusSeeOther)
+}
 
-	var (
-		data *templates.SearchData
-		err  error
-	)
-
-	if mode == "semantic" {
-		embedding, embedErr := s.ollama.Embed(r.Context(), query)
-		if embedErr != nil {
-			// Don't 500 — show the user a graceful error panel with a
-			// text-mode retry link. Their query is still valid; we just
-			// can't embed it right now.
-			data = &templates.SearchData{
-				Query:      query,
-				Mode:       "semantic",
-				EmbedError: embedErr.Error(),
-			}
-		} else {
-			data, err = s.db.SearchSemantic(r.Context(), query, embedding, page)
-			if err != nil {
-				http.Error(w, "semantic search: "+err.Error(), http.StatusInternalServerError)
-				return
-			}
-		}
-	} else {
-		data, err = s.db.SearchText(r.Context(), query, page)
-		if err != nil {
-			http.Error(w, "text search: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
-
-	if err := templates.Search(*data).Render(r.Context(), w); err != nil {
-		http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
-	}
+// handleLegacyThoughtEdit redirects GET /thought/{id}/edit to
+// /?id={id}&mode=edit. POST /thought/{id}/edit stays as handleUpdate.
+func (s *Server) handleLegacyThoughtEdit(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	http.Redirect(w, r, "/?id="+id+"&mode=edit", http.StatusSeeOther)
 }
 
 func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
@@ -463,7 +413,7 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/thought/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+	http.Redirect(w, r, "/?id="+strconv.FormatInt(id, 10), http.StatusSeeOther)
 }
 
 // writeComposeDraftError re-renders the compose panel via the
@@ -496,27 +446,6 @@ func (s *Server) handlePartialComposeClose(w http.ResponseWriter, r *http.Reques
 	// Empty body clears #compose-slot via innerHTML swap.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-}
-
-func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		http.Error(w, "thought id must be an integer", http.StatusBadRequest)
-		return
-	}
-	detail, err := s.db.ThoughtByID(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			http.Error(w, "thought not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, "detail: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := templates.Detail(*detail).Render(r.Context(), w); err != nil {
-		http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
-	}
 }
 
 // parseIDParam pulls {id} out of the chi URL param and parses it as an
@@ -571,32 +500,6 @@ func parseActionItems(form url.Values) []templates.ActionItem {
 	return out
 }
 
-func (s *Server) handleEditForm(w http.ResponseWriter, r *http.Request) {
-	id, ok := parseIDParam(w, r)
-	if !ok {
-		return
-	}
-	detail, err := s.db.ThoughtByID(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			http.Error(w, "thought not found", http.StatusNotFound)
-			return
-		}
-		http.Error(w, "load thought: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	data := templates.EditFormData{
-		Thought:      *detail,
-		ContentInput: detail.Content,
-		TypeInput:    detail.Type,
-		TopicsInput:  templates.RenderableTopics(detail.Topics),
-		PeopleInput:  templates.RenderableTopics(detail.People),
-	}
-	if err := templates.DetailEditV11(data).Render(r.Context(), w); err != nil {
-		http.Error(w, "render: "+err.Error(), http.StatusInternalServerError)
-	}
-}
-
 func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	id, ok := parseIDParam(w, r)
 	if !ok {
@@ -631,35 +534,20 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	v15Filters := parseFiltersFromReturnQuery(r.FormValue("return_filters"))
 
 	renderEditError := func(msg string) {
-		if isHTMX {
-			// v1.5 in-pane: re-render DetailEdit with the user's
-			// in-progress values echoed back. ActionItems come from
-			// the parsed form; content/type/topics/people come from
-			// the ThoughtDetail we stamp below.
-			echo := *existing
-			echo.Content = content
-			echo.Type = typ
-			echo.Topics = parseCSVField(topicsRaw)
-			echo.People = parseCSVField(peopleRaw)
-			echo.ActionItems = actionItems
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.WriteHeader(http.StatusUnprocessableEntity)
-			_ = templates.DetailEdit(&echo, v15Filters, msg).Render(r.Context(), w)
-			return
-		}
-		// v1.1 full-page fallback.
+		// Re-render DetailEdit with the user's in-progress values
+		// echoed back. ActionItems come from the parsed form;
+		// content/type/topics/people come from the ThoughtDetail we
+		// stamp below. Same branch for htmx and non-htmx — after the
+		// v1.5 cutover DetailEdit is the only edit form.
 		echo := *existing
+		echo.Content = content
+		echo.Type = typ
+		echo.Topics = parseCSVField(topicsRaw)
+		echo.People = parseCSVField(peopleRaw)
 		echo.ActionItems = actionItems
-		data := templates.EditFormData{
-			Thought:      echo,
-			Error:        msg,
-			ContentInput: content,
-			TypeInput:    typ,
-			TopicsInput:  topicsRaw,
-			PeopleInput:  peopleRaw,
-		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		_ = templates.DetailEditV11(data).Render(r.Context(), w)
+		_ = templates.DetailEdit(&echo, v15Filters, msg).Render(r.Context(), w)
 	}
 
 	if content == "" {
@@ -706,9 +594,9 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		pushQuery := filtersToURLString(v15Filters)
-		pushURL := "/v15?id=" + strconv.FormatInt(id, 10)
+		pushURL := "/?id=" + strconv.FormatInt(id, 10)
 		if pushQuery != "" {
-			pushURL = "/v15?" + pushQuery + "&id=" + strconv.FormatInt(id, 10)
+			pushURL = "/?" + pushQuery + "&id=" + strconv.FormatInt(id, 10)
 		}
 		w.Header().Set("HX-Trigger", "refresh-row-"+strconv.FormatInt(id, 10))
 		w.Header().Set("HX-Push-Url", pushURL)
@@ -719,7 +607,7 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/thought/"+strconv.FormatInt(id, 10), http.StatusSeeOther)
+	http.Redirect(w, r, "/?id="+strconv.FormatInt(id, 10), http.StatusSeeOther)
 }
 
 // parseFiltersFromReturnQuery decodes the v1.5 edit form's
@@ -863,7 +751,7 @@ func (s *Server) handleBulkDelete(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("HX-Trigger", "clear-detail")
 		// Push a URL without ?id= so refresh doesn't resurrect the
 		// stale id.
-		pushURL := "/v15"
+		pushURL := "/"
 		if qs := filtersToURLString(filters); qs != "" {
 			pushURL += "?" + qs
 		}

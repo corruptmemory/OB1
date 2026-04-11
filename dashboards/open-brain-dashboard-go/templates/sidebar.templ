@@ -7,13 +7,11 @@ import "fmt"
 // a footer with total/week stats plus the theme toggle.
 //
 // Every filter anchor has both an href and an hx-get. The href targets
-// the full /v15 shell with the filter applied so non-JS users (and
+// the full shell at / with the filter applied so non-JS users (and
 // middle-click-new-tab, right-click-copy-link) get bookmarkable URLs;
 // htmx intercepts the click with hx-get to do a partial /partials/list
 // swap targeting #list-pane with hx-push-url. Filter changes always
-// resetPage so pagination doesn't leak across clicks. The
-// /partials/list endpoint itself lands in Task 7 — during the 6→7 gap
-// the JS-on click will 404 but the href still renders the shell.
+// resetPage so pagination doesn't leak across clicks.
 templ Sidebar(sd SidebarData) {
 	<div class="sidebar-inner">
 		<button class="btn-new"
@@ -77,7 +75,7 @@ templ typeChip(value, label string, count int64, active ListFilters) {
 	if active.Type == value {
 		<li>
 			<a class="chip chip--active"
-				href={ templ.SafeURL("/v15?" + filtersToURL(resetPage(clearType(active)))) }
+				href={ templ.SafeURL("/?" + filtersToURL(resetPage(clearType(active)))) }
 				hx-get={ "/partials/list?" + filtersToURL(resetPage(clearType(active))) }
 				hx-target="#list-pane"
 				hx-push-url="true"
@@ -88,7 +86,7 @@ templ typeChip(value, label string, count int64, active ListFilters) {
 	} else {
 		<li>
 			<a class="chip"
-				href={ templ.SafeURL("/v15?" + filtersToURL(resetPage(withType(active, value)))) }
+				href={ templ.SafeURL("/?" + filtersToURL(resetPage(withType(active, value)))) }
 				hx-get={ "/partials/list?" + filtersToURL(resetPage(withType(active, value))) }
 				hx-target="#list-pane"
 				hx-push-url="true"
@@ -103,7 +101,7 @@ templ daysChip(days int, label string, active ListFilters) {
 	if active.Days == days {
 		<li>
 			<a class="chip chip--active"
-				href={ templ.SafeURL("/v15?" + filtersToURL(resetPage(withDays(active, 0)))) }
+				href={ templ.SafeURL("/?" + filtersToURL(resetPage(withDays(active, 0)))) }
 				hx-get={ "/partials/list?" + filtersToURL(resetPage(withDays(active, 0))) }
 				hx-target="#list-pane"
 				hx-push-url="true"
@@ -112,7 +110,7 @@ templ daysChip(days int, label string, active ListFilters) {
 	} else {
 		<li>
 			<a class="chip"
-				href={ templ.SafeURL("/v15?" + filtersToURL(resetPage(withDays(active, days)))) }
+				href={ templ.SafeURL("/?" + filtersToURL(resetPage(withDays(active, days)))) }
 				hx-get={ "/partials/list?" + filtersToURL(resetPage(withDays(active, days))) }
 				hx-target="#list-pane"
 				hx-push-url="true"
@@ -125,7 +123,7 @@ templ topicRow(topic string, count int64, active ListFilters) {
 	if active.Topic == topic {
 		<li>
 			<a class="filter-row filter-row--active"
-				href={ templ.SafeURL("/v15?" + filtersToURL(resetPage(withTopic(active, "")))) }
+				href={ templ.SafeURL("/?" + filtersToURL(resetPage(withTopic(active, "")))) }
 				hx-get={ "/partials/list?" + filtersToURL(resetPage(withTopic(active, ""))) }
 				hx-target="#list-pane"
 				hx-push-url="true"
@@ -137,7 +135,7 @@ templ topicRow(topic string, count int64, active ListFilters) {
 	} else {
 		<li>
 			<a class="filter-row"
-				href={ templ.SafeURL("/v15?" + filtersToURL(resetPage(withTopic(active, topic)))) }
+				href={ templ.SafeURL("/?" + filtersToURL(resetPage(withTopic(active, topic)))) }
 				hx-get={ "/partials/list?" + filtersToURL(resetPage(withTopic(active, topic))) }
 				hx-target="#list-pane"
 				hx-push-url="true"
@@ -153,7 +151,7 @@ templ personRow(person string, count int64, active ListFilters) {
 	if active.Person == person {
 		<li>
 			<a class="filter-row filter-row--active"
-				href={ templ.SafeURL("/v15?" + filtersToURL(resetPage(withPerson(active, "")))) }
+				href={ templ.SafeURL("/?" + filtersToURL(resetPage(withPerson(active, "")))) }
 				hx-get={ "/partials/list?" + filtersToURL(resetPage(withPerson(active, ""))) }
 				hx-target="#list-pane"
 				hx-push-url="true"
@@ -165,7 +163,7 @@ templ personRow(person string, count int64, active ListFilters) {
 	} else {
 		<li>
 			<a class="filter-row"
-				href={ templ.SafeURL("/v15?" + filtersToURL(resetPage(withPerson(active, person)))) }
+				href={ templ.SafeURL("/?" + filtersToURL(resetPage(withPerson(active, person)))) }
 				hx-get={ "/partials/list?" + filtersToURL(resetPage(withPerson(active, person))) }
 				hx-target="#list-pane"
 				hx-push-url="true"

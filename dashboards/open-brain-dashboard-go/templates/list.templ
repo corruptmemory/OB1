@@ -62,7 +62,7 @@ templ List(ld ListData) {
 		if len(ld.Result.Results) == 0 {
 			<div class="empty-state">
 				<p>No thoughts match these filters.</p>
-				<a class="link" href="/v15"
+				<a class="link" href="/"
 					hx-get="/partials/list"
 					hx-target="#list-pane"
 					hx-push-url="true"
@@ -122,7 +122,7 @@ templ listRow(t ThoughtData, selectedID int64, current ListFilters) {
 			<input type="checkbox" class="row-checkbox" name="ids" value={ fmt.Sprintf("%d", t.ID) }/>
 		</label>
 		<a class={ rowClass(t.ID, selectedID) }
-			href={ templ.SafeURL(fmt.Sprintf("/v15?%s&id=%d", filtersToURL(current), t.ID)) }
+			href={ templ.SafeURL(fmt.Sprintf("/?%s&id=%d", filtersToURL(current), t.ID)) }
 			hx-get={ fmt.Sprintf("/partials/detail/%d?%s", t.ID, filtersToURL(current)) }
 			hx-target="#detail-pane"
 			hx-push-url="true"
@@ -150,7 +150,7 @@ templ pagination(r *ListResult) {
 	<nav class="pagination">
 		if r.Filter.Page > 1 {
 			<a class="page-link"
-				href={ templ.SafeURL("/v15?" + filtersToURL(pageFilter(r.Filter, r.Filter.Page-1))) }
+				href={ templ.SafeURL("/?" + filtersToURL(pageFilter(r.Filter, r.Filter.Page-1))) }
 				hx-get={ "/partials/list?" + filtersToURL(pageFilter(r.Filter, r.Filter.Page-1)) }
 				hx-target="#list-pane"
 				hx-push-url="true"
@@ -161,7 +161,7 @@ templ pagination(r *ListResult) {
 		<span class="page-indicator">{ fmt.Sprintf("Page %d of %d", r.Filter.Page, r.TotalPages) }</span>
 		if r.Filter.Page < r.TotalPages {
 			<a class="page-link"
-				href={ templ.SafeURL("/v15?" + filtersToURL(pageFilter(r.Filter, r.Filter.Page+1))) }
+				href={ templ.SafeURL("/?" + filtersToURL(pageFilter(r.Filter, r.Filter.Page+1))) }
 				hx-get={ "/partials/list?" + filtersToURL(pageFilter(r.Filter, r.Filter.Page+1)) }
 				hx-target="#list-pane"
 				hx-push-url="true"

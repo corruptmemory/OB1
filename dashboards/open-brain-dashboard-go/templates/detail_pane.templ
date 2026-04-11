@@ -28,7 +28,7 @@ templ DetailRead(d *ThoughtDetail, current ListFilters) {
 	<div class="detail-inner">
 		<div class="detail-toolbar">
 			<a class="btn-primary"
-				href={ templ.SafeURL(fmt.Sprintf("/v15?%s&id=%d&mode=edit", filtersToURL(current), d.ID)) }
+				href={ templ.SafeURL(fmt.Sprintf("/?%s&id=%d&mode=edit", filtersToURL(current), d.ID)) }
 				hx-get={ fmt.Sprintf("/partials/detail/%d/edit?%s", d.ID, filtersToURL(current)) }
 				hx-target="#detail-pane"
 				hx-push-url="true"
@@ -57,7 +57,7 @@ templ DetailRead(d *ThoughtDetail, current ListFilters) {
 				<span class="detail-label">Topics:</span>
 				for _, topic := range d.Topics {
 					<a class="inline-tag"
-						href={ templ.SafeURL("/v15?topic=" + url.QueryEscape(topic)) }
+						href={ templ.SafeURL("/?topic=" + url.QueryEscape(topic)) }
 						hx-get={ "/partials/list?topic=" + url.QueryEscape(topic) }
 						hx-target="#list-pane"
 						hx-push-url="true"
@@ -70,7 +70,7 @@ templ DetailRead(d *ThoughtDetail, current ListFilters) {
 				<span class="detail-label">People:</span>
 				for _, person := range d.People {
 					<a class="inline-tag"
-						href={ templ.SafeURL("/v15?person=" + url.QueryEscape(person)) }
+						href={ templ.SafeURL("/?person=" + url.QueryEscape(person)) }
 						hx-get={ "/partials/list?person=" + url.QueryEscape(person) }
 						hx-target="#list-pane"
 						hx-push-url="true"
@@ -125,7 +125,7 @@ templ DetailEdit(d *ThoughtDetail, current ListFilters, formErr string) {
 			<span class="detail-edit-mode">editing #{ fmt.Sprintf("%d", d.ID) }</span>
 			<div class="toolbar-spacer"></div>
 			<a class="btn-secondary"
-				href={ templ.SafeURL(fmt.Sprintf("/v15?%s&id=%d", filtersToURL(current), d.ID)) }
+				href={ templ.SafeURL(fmt.Sprintf("/?%s&id=%d", filtersToURL(current), d.ID)) }
 				hx-get={ fmt.Sprintf("/partials/detail/%d?%s", d.ID, filtersToURL(current)) }
 				hx-target="#detail-pane"
 				hx-push-url="true"

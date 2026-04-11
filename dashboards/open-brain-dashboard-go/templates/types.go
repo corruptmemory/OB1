@@ -8,12 +8,12 @@ import (
 	"github.com/a-h/templ"
 )
 
-// ThoughtData is the view model for a single thought as rendered on the
-// home page's recent list and browse/search pages. Fields are flattened
-// out of the `thoughts.metadata` jsonb blob by the main package's query
-// layer so templates can render without re-parsing JSON. Similarity is
-// populated only by the semantic-search path and ignored elsewhere — a
-// zero value tells ThoughtCard to skip the score badge.
+// ThoughtData is the view model for a single thought as rendered in
+// the v1.5 list pane. Fields are flattened out of the `thoughts.metadata`
+// jsonb blob by the main package's query layer so templates can render
+// without re-parsing JSON. Similarity is populated only by the semantic
+// search path and ignored elsewhere — a zero value tells the list row
+// to skip the score badge.
 type ThoughtData struct {
 	ID         int64
 	Content    string
@@ -32,15 +32,6 @@ type TypeCount struct {
 type TopicCount struct {
 	Topic string
 	Count int64
-}
-
-// HomeData is the aggregate payload the home page renders.
-type HomeData struct {
-	Total     int64
-	WeekCount int64
-	Types     []TypeCount
-	Topics    []TopicCount
-	Recent    []ThoughtData
 }
 
 // ActionItem normalises qwen2.5:3b's two observed shapes for
@@ -79,12 +70,12 @@ func (a *ActionItem) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// ThoughtDetail is the full view model for the detail page. It embeds
-// ThoughtData so every place that already takes a ThoughtData (ThoughtCard,
-// list rows, etc.) works unchanged, and adds the heavier fields the detail
-// page renders. UpdatedAt is nil for thoughts that have never been edited
-// — it lives inside the metadata jsonb blob (as metadata.updated_at) so
-// the stock OB1 schema stays untouched.
+// ThoughtDetail is the full view model for the detail pane. It embeds
+// ThoughtData so every place that already takes a ThoughtData (list
+// rows, etc.) works unchanged, and adds the heavier fields the detail
+// pane renders. UpdatedAt is nil for thoughts that have never been
+// edited — it lives inside the metadata jsonb blob (as
+// metadata.updated_at) so the stock OB1 schema stays untouched.
 type ThoughtDetail struct {
 	ThoughtData
 	ActionItems    []ActionItem
@@ -92,49 +83,6 @@ type ThoughtDetail struct {
 	Source         string
 	UpdatedAt      *time.Time
 	RawMetadata    []byte
-}
-
-// BrowseFilter captures every query parameter the browse page accepts.
-// Zero values mean "no filter on this field". Days == 0 means all time.
-type BrowseFilter struct {
-	Type   string
-	Topic  string
-	Person string
-	Q      string
-	Days   int
-}
-
-// Active reports whether any filter is currently applied. The template uses
-// this to decide whether to show the "clear filters" link.
-func (f BrowseFilter) Active() bool {
-	return f.Type != "" || f.Topic != "" || f.Person != "" || f.Q != "" || f.Days > 0
-}
-
-// BrowseData is the payload the browse page renders — the filtered result
-// set plus pagination metadata and the filter struct echoed back so the
-// form can preselect its current values.
-type BrowseData struct {
-	Filter     BrowseFilter
-	Results    []ThoughtData
-	Total      int64
-	Page       int
-	PerPage    int
-	TotalPages int
-}
-
-// SearchData is the payload the search page renders. Mode is either
-// "semantic" or "text". EmbedError, if non-empty, indicates that semantic
-// mode tried to call Ollama and failed — the template renders a graceful
-// error panel with a text-mode retry link instead of returning 500.
-type SearchData struct {
-	Query      string
-	Mode       string
-	Results    []ThoughtData
-	Total      int64
-	Page       int
-	PerPage    int
-	TotalPages int
-	EmbedError string
 }
 
 // ShellViewModel is the payload for the v1.5 three-pane shell. Each pane
