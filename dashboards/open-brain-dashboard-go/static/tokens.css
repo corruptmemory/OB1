@@ -1,5 +1,5 @@
 /* Dark theme tokens for open-brain-dashboard-go.
-   Keep this file free of component styles — those live in app.css. */
+   Dark is the default. Light is active when <html data-theme="light">. */
 
 :root {
 	--bg: #0f1419;
@@ -31,4 +31,20 @@
 	--space-8: 3rem;
 
 	--max-content-width: 1100px;
+}
+
+:root[data-theme="light"] {
+	--bg: #ffffff;
+	--bg-elevated: #f6f8fa;
+	--bg-raised: #eaeef2;
+	--fg: #1f2328;
+	--fg-muted: #59636e;
+	--fg-subtle: #818b98;
+	--accent: #0969da;
+	--accent-dim: #0969da1a;
+	--border: #d1d9e0;
+	--border-muted: #e4e8ed;
+	--danger: #cf222e;
+	--success: #1a7f37;
+	--warning: #9a6700;
 }
