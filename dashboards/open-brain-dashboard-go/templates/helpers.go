@@ -148,6 +148,11 @@ func withDays(f ListFilters, d int) ListFilters      { f.Days = d; return f }
 func withTopic(f ListFilters, t string) ListFilters  { f.Topic = t; return f }
 func withPerson(f ListFilters, p string) ListFilters { f.Person = p; return f }
 
+// resetPage returns a copy of f with Page cleared. Filter changes from
+// the sidebar should always reset pagination because the filtered result
+// set is usually smaller than the page we were on.
+func resetPage(f ListFilters) ListFilters { f.Page = 0; return f }
+
 // filtersToURL renders a ListFilters as a URL query string, skipping
 // zero values. Used by the sidebar chips and list-pane pagination to
 // construct navigation URLs that preserve sibling filters.
