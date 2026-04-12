@@ -62,6 +62,8 @@ func NewServer(db *DB, ollama *OllamaClient, health *OllamaHealth) *Server {
 	s.router.Post("/thought/{id}/edit", s.handleUpdate)
 	s.router.Post("/thought/{id}/delete", s.handleDelete)
 	s.router.Post("/bulk-delete", s.handleBulkDelete)
+	s.router.Post("/coalesce", s.handleCoalesce)
+	s.router.Post("/coalesce/confirm", s.handleCoalesceConfirm)
 
 	// Legacy 303 redirects for v1.1 URLs — keep bookmarks working.
 	s.router.Get("/home", s.handleLegacyHomeAlias)
@@ -130,6 +132,23 @@ func selectedIDFromQuery(r *http.Request) int64 {
 // /partials/* routes.
 func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	view := r.URL.Query().Get("view")
+
+	// Non-catalogue views render a placeholder shell.
+	if view == "dashboard" || view == "organize" {
+		vm := templates.ShellViewModel{
+			View:    view,
+			Sidebar: templates.ViewPlaceholder(view),
+			List:    templates.ViewPlaceholder(view),
+			Detail:  templates.ViewPlaceholder(view),
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := templates.Shell(vm).Render(ctx, w); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
 	filters := parseListFilters(r)
 
 	sidebarCounts, err := s.db.SidebarCounts(ctx)
@@ -180,6 +199,7 @@ func (s *Server) handleShell(w http.ResponseWriter, r *http.Request) {
 	}
 
 	vm := templates.ShellViewModel{
+		View:    view,
 		Sidebar: templates.Sidebar(sidebarData),
 		List:    templates.List(listData),
 		Detail:  detailComponent,
@@ -834,4 +854,164 @@ func (s *Server) handlePartialDetailEmpty(w http.ResponseWriter, r *http.Request
 	if err := templates.DetailEmpty().Render(r.Context(), w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// handleCoalesce is the read-only synthesis step: fetch the selected
+// thoughts' content, call Ollama to synthesize, call Extract for
+// metadata, then render a CoalescePanel pre-filled with the result.
+// Falls back to raw concatenation with a warning when Ollama is down.
+func (s *Server) handleCoalesce(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	isHTMX := r.Header.Get("HX-Request") == "true"
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "parse form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	ids := parseIDList(r.Form["ids"])
+	if len(ids) < 2 {
+		http.Error(w, "select at least 2 thoughts to coalesce", http.StatusBadRequest)
+		return
+	}
+
+	contents, err := s.db.FetchContents(ctx, ids)
+	if err != nil {
+		http.Error(w, "fetch contents: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Synthesize via Ollama chat. Fall back to concatenation on failure.
+	var synthesized string
+	var warning string
+	merged, synthErr := s.ollama.Synthesize(ctx, contents)
+	if synthErr != nil {
+		// Fallback: concatenate with separators.
+		var buf strings.Builder
+		for i, c := range contents {
+			if i > 0 {
+				buf.WriteString("\n\n---\n\n")
+			}
+			buf.WriteString(c)
+		}
+		synthesized = buf.String()
+		warning = "Ollama unavailable — showing raw concatenation. Edit as needed."
+	} else {
+		synthesized = merged
+	}
+
+	// Extract metadata from the synthesized content.
+	extracted := s.ollama.Extract(ctx, synthesized)
+	typ := extracted.Type
+	if typ == "" {
+		typ = "observation"
+	}
+
+	draft := templates.CoalesceDraft{
+		Content:     synthesized,
+		Type:        typ,
+		Topics:      strings.Join(extracted.Topics, ", "),
+		People:      strings.Join(extracted.People, ", "),
+		OriginalIDs: ids,
+		Warning:     warning,
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if !isHTMX {
+		// Non-htmx: render full page with the panel embedded. For now,
+		// just render the panel fragment — htmx is the primary path.
+	}
+	if err := templates.CoalescePanel(draft).Render(ctx, w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// handleCoalesceConfirm is the destructive step: create the new thought
+// and delete the originals in a single transaction.
+func (s *Server) handleCoalesceConfirm(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	isHTMX := r.Header.Get("HX-Request") == "true"
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "parse form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	content := strings.TrimSpace(r.FormValue("content"))
+	typ := strings.TrimSpace(r.FormValue("type"))
+	topics := parseCSVField(r.FormValue("topics"))
+	people := parseCSVField(r.FormValue("people"))
+	ids := parseIDList(r.Form["ids"])
+
+	if content == "" {
+		http.Error(w, "content cannot be empty", http.StatusBadRequest)
+		return
+	}
+	if len(ids) < 2 {
+		http.Error(w, "need at least 2 original thought IDs", http.StatusBadRequest)
+		return
+	}
+	if typ == "" {
+		typ = "observation"
+	}
+
+	// Embed the new synthesized content.
+	embedding, err := s.ollama.Embed(ctx, content)
+	if err != nil {
+		// Render the coalesce panel with error so the user can retry.
+		draft := templates.CoalesceDraft{
+			Content:     content,
+			Type:        typ,
+			Topics:      r.FormValue("topics"),
+			People:      r.FormValue("people"),
+			OriginalIDs: ids,
+			Error:       "embed failed: " + err.Error(),
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		templates.CoalescePanel(draft).Render(ctx, w)
+		return
+	}
+
+	newID, err := s.db.CoalesceThoughts(ctx, CreateThoughtInput{
+		Content:   content,
+		Type:      typ,
+		Topics:    topics,
+		People:    people,
+		Embedding: embedding,
+	}, ids)
+	if err != nil {
+		draft := templates.CoalesceDraft{
+			Content:     content,
+			Type:        typ,
+			Topics:      r.FormValue("topics"),
+			People:      r.FormValue("people"),
+			OriginalIDs: ids,
+			Error:       "coalesce failed: " + err.Error(),
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		templates.CoalescePanel(draft).Render(ctx, w)
+		return
+	}
+
+	if isHTMX {
+		// Close the compose slot and trigger list refresh + focus.
+		w.Header().Set("HX-Trigger", fmt.Sprintf(`{"refresh-list": {}, "focus-thought": {"id": %d}}`, newID))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	http.Redirect(w, r, "/?id="+strconv.FormatInt(newID, 10), http.StatusSeeOther)
+}
+
+// parseIDList parses a []string of id values into []int64, skipping
+// any that aren't valid integers. Used by bulk-delete and coalesce.
+func parseIDList(strs []string) []int64 {
+	var ids []int64
+	for _, s := range strs {
+		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+			ids = append(ids, n)
+		}
+	}
+	return ids
 }

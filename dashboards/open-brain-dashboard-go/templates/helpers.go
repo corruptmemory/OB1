@@ -1,6 +1,8 @@
 package templates
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -157,5 +159,15 @@ func filtersToURL(f ListFilters) string {
 		v.Set("page", fmt.Sprintf("%d", f.Page))
 	}
 	return v.Encode()
+}
+
+// PrettyJSON reformats a raw JSON byte slice with two-space indentation.
+// Returns the original string unchanged if the input is not valid JSON.
+func PrettyJSON(raw []byte) string {
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, raw, "", "  "); err != nil {
+		return string(raw)
+	}
+	return buf.String()
 }
 

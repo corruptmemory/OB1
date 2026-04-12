@@ -44,6 +44,15 @@ templ List(ld ListData) {
 				<button type="button" class="btn-danger"
 					onclick="this.closest('.list-toolbar').setAttribute('data-confirming','true')"
 				>Delete selected</button>
+				<button type="button" class="btn-secondary"
+					hx-post="/coalesce"
+					hx-include="#list-form"
+					hx-target="#compose-slot"
+					hx-swap="innerHTML"
+					hx-indicator="#coalesce-indicator"
+				>Coalesce</button>
+				<span id="coalesce-indicator" class="htmx-indicator coalesce-spinner">synthesizing…</span>
+				<span id="coalesce-error" class="coalesce-error"></span>
 				<button type="button" class="btn-secondary" onclick="obClearSelection()">Clear</button>
 			</div>
 			<div class="toolbar-confirm">

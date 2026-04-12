@@ -90,6 +90,7 @@ type ThoughtDetail struct {
 // about what lives inside it — handlers decide which component to pass
 // for each slot based on the URL's query string.
 type ShellViewModel struct {
+	View    string // "catalogue" (default), "dashboard", "organize"
 	Sidebar templ.Component
 	List    templ.Component
 	Detail  templ.Component
@@ -163,6 +164,19 @@ type ComposeDraft struct {
 	Topics  string
 	People  string
 	Error   string
+}
+
+// CoalesceDraft carries pre-filled form values for the coalesce panel.
+// OriginalIDs are carried as hidden fields so the confirm POST knows
+// which thoughts to replace.
+type CoalesceDraft struct {
+	Content     string
+	Type        string
+	Topics      string
+	People      string
+	OriginalIDs []int64
+	Warning     string // non-fatal warning (e.g. "Ollama unavailable, showing raw concatenation")
+	Error       string // fatal error
 }
 
 // SidebarData is the view-model for sidebar.templ. Bundles counts

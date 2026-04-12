@@ -154,3 +154,76 @@ func (c *OllamaClient) Extract(ctx context.Context, content string) ExtractedMet
 	}
 	return meta
 }
+
+const synthesizePrompt = `You are a note consolidation assistant. You will receive multiple notes that overlap in topic. Combine them into a single concise note that preserves all unique information, removes redundancy, and reads naturally. Output only the merged note text, nothing else.`
+
+// Synthesize calls the Ollama chat API to merge multiple thought contents
+// into one consolidated note. Returns the merged text. On any failure
+// (model down, timeout, etc.) returns an error so the caller can fall
+// back to raw concatenation.
+func (c *OllamaClient) Synthesize(ctx context.Context, contents []string) (string, error) {
+	if c.chatModel == "" {
+		return "", fmt.Errorf("no chat model configured")
+	}
+
+	// Build a user message with each thought numbered.
+	var buf bytes.Buffer
+	for i, content := range contents {
+		fmt.Fprintf(&buf, "--- Note %d ---\n%s\n\n", i+1, content)
+	}
+
+	type chatMessage struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	body := struct {
+		Model    string        `json:"model"`
+		Messages []chatMessage `json:"messages"`
+		Stream   bool          `json:"stream"`
+	}{
+		Model: c.chatModel,
+		Messages: []chatMessage{
+			{Role: "system", Content: synthesizePrompt},
+			{Role: "user", Content: buf.String()},
+		},
+		Stream: false,
+	}
+
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return "", fmt.Errorf("marshal synthesize request: %w", err)
+	}
+
+	// Synthesis can take a while on CPU-only Ollama with multiple long
+	// thoughts, so use a generous timeout independent of the client default.
+	synthCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(synthCtx, http.MethodPost, c.baseURL+"/api/chat", bytes.NewReader(payload))
+	if err != nil {
+		return "", fmt.Errorf("create synthesize request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("ollama synthesize: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("ollama synthesize status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var chatResp struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return "", fmt.Errorf("decode synthesize response: %w", err)
+	}
+
+	return chatResp.Message.Content, nil
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/NateBJones-Projects/OB1/dashboards/open-brain-dashboard-go/templates"
@@ -342,6 +343,107 @@ func (d *DB) BulkDelete(ctx context.Context, ids []int64) (int64, error) {
 		return 0, fmt.Errorf("bulk delete: %w", err)
 	}
 	return tag.RowsAffected(), nil
+}
+
+// CoalesceThoughts atomically inserts a new thought and deletes the
+// originals in a single transaction. Returns the new thought's id.
+// If any step fails, the transaction is rolled back and originals
+// are untouched.
+func (d *DB) CoalesceThoughts(ctx context.Context, in CreateThoughtInput, deleteIDs []int64) (int64, error) {
+	tx, err := d.pool.Begin(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("begin coalesce tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Build metadata for the new thought.
+	topics := in.Topics
+	if topics == nil {
+		topics = []string{}
+	}
+	people := in.People
+	if people == nil {
+		people = []string{}
+	}
+	actionItems := in.ActionItems
+	if actionItems == nil {
+		actionItems = []string{}
+	}
+	datesMentioned := in.DatesMentioned
+	if datesMentioned == nil {
+		datesMentioned = []string{}
+	}
+	metadata := map[string]any{
+		"type":            in.Type,
+		"topics":          topics,
+		"people":          people,
+		"action_items":    actionItems,
+		"dates_mentioned": datesMentioned,
+		"source":          "dashboard-coalesce",
+	}
+	metaJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return 0, fmt.Errorf("marshal coalesce metadata: %w", err)
+	}
+
+	// Insert the new coalesced thought.
+	var newID int64
+	vec := pgvector.NewVector(in.Embedding)
+	err = tx.QueryRow(ctx, `
+		INSERT INTO thoughts (content, metadata, embedding)
+		VALUES ($1, $2::jsonb, $3)
+		RETURNING id
+	`, in.Content, metaJSON, vec).Scan(&newID)
+	if err != nil {
+		return 0, fmt.Errorf("insert coalesced thought: %w", err)
+	}
+
+	// Delete the originals.
+	delSQL, delArgs := buildBulkDeleteQuery(deleteIDs)
+	if delSQL != "" {
+		if _, err := tx.Exec(ctx, delSQL, delArgs...); err != nil {
+			return 0, fmt.Errorf("delete originals in coalesce: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return 0, fmt.Errorf("commit coalesce tx: %w", err)
+	}
+	return newID, nil
+}
+
+// FetchContents retrieves the content text for a list of thought IDs.
+// Used by coalesce to gather the source material before synthesis.
+func (d *DB) FetchContents(ctx context.Context, ids []int64) ([]string, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	// Build a parameterized IN clause.
+	args := make([]any, len(ids))
+	params := make([]string, len(ids))
+	for i, id := range ids {
+		args[i] = id
+		params[i] = fmt.Sprintf("$%d", i+1)
+	}
+	query := fmt.Sprintf(
+		"SELECT content FROM thoughts WHERE id IN (%s) ORDER BY created_at ASC",
+		strings.Join(params, ", "),
+	)
+	rows, err := d.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("fetch contents: %w", err)
+	}
+	defer rows.Close()
+
+	var contents []string
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return nil, fmt.Errorf("scan content: %w", err)
+		}
+		contents = append(contents, c)
+	}
+	return contents, rows.Err()
 }
 
 // SidebarCounts is the one query set that powers the filter rail:

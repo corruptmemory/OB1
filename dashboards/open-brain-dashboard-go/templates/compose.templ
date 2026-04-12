@@ -1,5 +1,7 @@
 package templates
 
+import "fmt"
+
 // Compose renders the floating compose panel as a native <dialog> in
 // compact mode. Task 10b adds backdrop-click-contracts, Esc handling,
 // and the error re-render path with preserved draft state.
@@ -112,4 +114,60 @@ templ draftTypeOption(value, current string) {
 	} else {
 		<option value={ value }>{ value }</option>
 	}
+}
+
+// CoalescePanel renders a compose-like floating dialog pre-filled with
+// AI-synthesized content. The form POSTs to /coalesce/confirm which
+// atomically creates the new thought and deletes the originals.
+templ CoalescePanel(d CoalesceDraft) {
+	<dialog class="compose-dialog compose-dialog--wide" id="compose-dialog" open>
+		<div class="compose-header">
+			<span class="compose-title">{ fmt.Sprintf("Coalesce %d thoughts", len(d.OriginalIDs)) }</span>
+			<div class="compose-controls">
+				<button type="button" class="btn-icon" onclick="obComposeExpand()" title="Expand">↕</button>
+				<button type="button" class="btn-icon"
+					hx-delete="/partials/compose"
+					hx-target="#compose-slot"
+					hx-swap="innerHTML"
+					title="Close">×</button>
+			</div>
+		</div>
+		<form class="compose-form"
+			action="/coalesce/confirm"
+			method="POST"
+			hx-post="/coalesce/confirm"
+			hx-target="#compose-slot"
+			hx-swap="innerHTML"
+		>
+			if d.Error != "" {
+				<div class="form-error">{ d.Error }</div>
+			}
+			if d.Warning != "" {
+				<div class="form-warning">{ d.Warning }</div>
+			}
+			for _, id := range d.OriginalIDs {
+				<input type="hidden" name="ids" value={ fmt.Sprintf("%d", id) }/>
+			}
+			<textarea name="content" class="edit-textarea" rows="12" required>{ d.Content }</textarea>
+			<div class="edit-row">
+				<select name="type" class="edit-select">
+					@draftTypeOption("observation", d.Type)
+					@draftTypeOption("task", d.Type)
+					@draftTypeOption("idea", d.Type)
+					@draftTypeOption("reference", d.Type)
+					@draftTypeOption("person_note", d.Type)
+				</select>
+			</div>
+			<input type="text" name="topics" class="edit-input" value={ d.Topics } placeholder="topics (comma-separated)"/>
+			<input type="text" name="people" class="edit-input" value={ d.People } placeholder="people (comma-separated)"/>
+			<div class="edit-actions">
+				<button type="submit" class="btn-danger">{ fmt.Sprintf("Replace %d thoughts", len(d.OriginalIDs)) }</button>
+				<button type="button" class="btn-secondary"
+					hx-delete="/partials/compose"
+					hx-target="#compose-slot"
+					hx-swap="innerHTML"
+				>Cancel</button>
+			</div>
+		</form>
+	</dialog>
 }

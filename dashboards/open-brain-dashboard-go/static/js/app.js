@@ -230,3 +230,16 @@ document.body.addEventListener("clear-detail", function () {
 		htmx.ajax("GET", "/partials/detail/empty", "#detail-pane");
 	}
 });
+
+// ---- htmx error handling ----
+// Show errors from coalesce (and other POST endpoints) inline rather
+// than silently failing. htmx:responseError fires when the server
+// returns a non-2xx status.
+document.body.addEventListener("htmx:responseError", function (e) {
+	var errEl = document.getElementById("coalesce-error");
+	if (errEl && e.detail && e.detail.xhr) {
+		errEl.textContent = e.detail.xhr.responseText || "Request failed";
+		errEl.style.display = "inline";
+		setTimeout(function () { errEl.style.display = ""; errEl.textContent = ""; }, 8000);
+	}
+});

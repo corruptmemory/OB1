@@ -27,7 +27,7 @@ templ DetailEmpty() {
 templ DetailRead(d *ThoughtDetail, current ListFilters) {
 	<div class="detail-inner">
 		<div class="detail-toolbar">
-			<a class="btn-primary"
+			<a class="btn-primary btn-sm"
 				href={ templ.SafeURL(fmt.Sprintf("/?%s&id=%d&mode=edit", filtersToURL(current), d.ID)) }
 				hx-get={ fmt.Sprintf("/partials/detail/%d/edit?%s", d.ID, filtersToURL(current)) }
 				hx-target="#detail-pane"
@@ -40,17 +40,17 @@ templ DetailRead(d *ThoughtDetail, current ListFilters) {
 				hx-target="#detail-pane"
 				hx-confirm="Delete this thought?"
 			>
-				<button class="btn-danger" type="submit">Delete</button>
+				<button class="btn-danger btn-sm" type="submit">Delete</button>
 			</form>
 		</div>
-		<header class="detail-header">
+		<div class="detail-meta-line">
 			<span class={ TypeClass(d.Type) }>{ d.Type }</span>
 			<span class="detail-time">captured { HumanTime(d.CreatedAt) }</span>
 			if d.UpdatedAt != nil {
 				<span class="detail-edited">edited { HumanTime(*d.UpdatedAt) }</span>
 			}
 			<span class="detail-id">#{ fmt.Sprintf("%d", d.ID) }</span>
-		</header>
+		</div>
 		<div class="detail-content">{ d.Content }</div>
 		if len(d.Topics) > 0 {
 			<div class="detail-row">
@@ -103,7 +103,7 @@ templ DetailRead(d *ThoughtDetail, current ListFilters) {
 		}
 		<details class="detail-raw">
 			<summary>Raw metadata</summary>
-			<pre>{ string(d.RawMetadata) }</pre>
+			<pre>{ PrettyJSON(d.RawMetadata) }</pre>
 		</details>
 	</div>
 }

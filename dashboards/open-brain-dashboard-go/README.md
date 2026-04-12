@@ -38,13 +38,15 @@ so bookmarks and back/forward work.
 
 | Area | State | Purpose |
 |---|---|---|
-| Shell | **working** | CSS-grid three-pane layout (`sidebar` · `list` · `detail`) sized in `fr` + fixed widths. Mobile falls back to a single column below 1216 px. Dark is default; light palette ships alongside and toggles via the sidebar footer's theme button (localStorage-backed). |
+| Activity bar | **working** | VS Code-style vertical icon strip (48px) to the left of the sidebar. Three view icons: Thought catalogue (active), Dashboard (placeholder), Organize (placeholder). Theme toggle pinned to the bottom. Active view gets an accent left-border highlight. Hidden on mobile (<1216px). View selection is URL-driven (`?view=catalogue\|dashboard\|organize`). |
+| Shell | **working** | CSS-grid four-pane layout (`activity` · `sidebar` · `list` · `handle` · `detail`) sized in `fr` + fixed widths. Mobile falls back to a single column below 1216 px. Dark is default; light palette ships alongside and toggles via the activity bar's theme button (localStorage-backed). |
 | Filter sidebar | **working** | Type chips with counts, time-window chips (All / 7d / 30d / 90d), top-50 topics, top-50 people. Topics and people sections have client-side filter inputs (prefix matches sort above contains matches) and scroll independently when the list overflows. Clicking a chip pushes the filter into the URL, clicking an active chip clears it. Every anchor has a real `href` for progressive-enhancement — JS-off users still get filtered shell loads. |
 | List pane | **working** | Dense two-line rows (~50 per 1080p screen) with type chip, relevance score (when searching), relative time, id, and truncated content (`text-overflow: ellipsis`). Row click loads the thought into the detail pane. A draggable resize handle between list and detail panes persists widths to localStorage. Search is submit-on-Enter with a ⌕ button — semantic results are filtered by a 0.5 cosine similarity threshold so irrelevant matches don't appear. Automatic text-fallback when Ollama is unavailable or returns no matches. An Ollama health dot next to the search box reflects the last embed outcome (green / amber / grey). Pagination is bookmarkable. |
 | Detail pane: read | **working** | Full content, topic/person tags linked back to filter URLs, action items with priority chips, raw metadata disclosure, Edit and Delete buttons. Shows "captured X ago" and "edited X ago" when applicable. |
 | Detail pane: edit | **working** | Right-pane swap (not a modal): textarea + type select + CSV topics/people + dynamic action-item rows. Save POSTs to `/thought/{id}/edit`; on htmx the response is a fragment + `HX-Trigger: refresh-row-N` so the corresponding list row re-fetches itself. Cancel restores the read view. JS-off fallback is the same POST with 303-to-read. Ollama embed is recomputed only when content text changes. |
 | Compose panel | **working** | Gmail-style floating `<dialog>` sibling of the shell. Opens bottom-right in compact mode (non-blocking), can expand to modal (dimmed backdrop) and back. Minimize collapses to the title bar via `<details>`. Esc and backdrop-click both contract to compact — your draft survives anything except explicit close. Save runs AI metadata extraction via Ollama chat (same prompt as the MCP server) to auto-populate type, topics, people, action_items, and dates_mentioned — user-entered form fields override AI results. Save clears the slot and fires `HX-Trigger: refresh-list, focus-thought-{id}` so the list refreshes and the new thought lands in the detail pane. Error path re-renders the panel with typed input preserved. |
 | Bulk delete | **working** | Row checkboxes with a three-state toolbar (normal / bulk / confirm) switched via CSS `:has()` — no client state tracking. Clicking Delete selected swaps to an inline confirm ("Delete N thoughts? This is permanent."); Yes, delete POSTs `ids[]` to `/bulk-delete` via `hx-include="#list-form"`. Deletion is immediate and permanent — no undo window. If the currently-open thought is in the deleted set, the response emits `HX-Trigger: clear-detail` and `HX-Push-Url` to strip `?id=` from the URL. |
+| Coalesce thoughts | **working** | When 2+ thoughts are selected, a "Coalesce" button appears in the bulk toolbar. Clicking it POSTs to `/coalesce`, which fetches the selected thoughts' content, calls Ollama chat to synthesize a merged note, then extracts metadata via the same AI pipeline as compose. The result renders in a compose-like floating dialog pre-filled with the AI synthesis. The user can edit everything, then "Replace N thoughts" atomically creates the new thought and deletes the originals in a single transaction. Falls back to raw concatenation with a warning when Ollama is unavailable. A "synthesizing…" indicator shows during the AI call. |
 | Legacy redirects | **working** | v1.1 URLs (`/home`, `/browse?…`, `/search?q=…&mode=…`, `/thought/{id}`, GET `/thought/{id}/edit`) all 303-redirect into the new `/?…` shape. The `mode=` parameter is dropped silently — v1.5 has no mode toggle. POST `/thought/{id}/edit` and POST `/thought/{id}/delete` stay as write endpoints. |
 
 **v2 candidates** (not in v1.5): "select all matching" beyond the
@@ -52,13 +54,14 @@ visible page, bulk re-embed, bulk tag/type edit, search operators
 (`"quoted"` substring), compose draft persistence, undo window,
 keyboard shortcuts, similarity threshold slider (currently baked at
 0.5), phone-specific layout refinements, numbered pagination with
-ellipsis elision.
+ellipsis elision, dashboard view (graphs/stats), organize view
+(duplicate detection via cosine distance).
 
 ## URL Surface
 
 ```
 GET  /                                 shell (query params drive state)
-     ?type=&topic=&person=&days=&q=&id=&page=
+     ?view=&type=&topic=&person=&days=&q=&id=&page=
 
 GET  /partials/list?…                  list pane fragment
 GET  /partials/detail/{id}?…           detail pane read fragment
@@ -73,6 +76,8 @@ POST /capture                          save a new thought from compose
 POST /thought/{id}/edit                update handler (content + metadata + action items)
 POST /thought/{id}/delete              delete handler
 POST /bulk-delete                      batch delete from selected ids
+POST /coalesce                         AI synthesis of selected thoughts → compose panel
+POST /coalesce/confirm                 replace originals with coalesced thought (tx)
 
 GET  /home                             303 → /
 GET  /browse?…                         303 → /?…
@@ -130,6 +135,38 @@ $EDITOR open-brain-dashboard-go.toml
 ```
 
 Or use `./build.sh run` to build and launch in one step.
+
+## Live Reload (Dev)
+
+[air](https://github.com/air-verse/air) watches `.go`, `.templ`, `.css`,
+`.js`, and `.toml` files and rebuilds + restarts the server automatically on
+every change. Because all static assets are embedded via `//go:embed`, each
+rebuild produces a fresh binary with the latest CSS/JS baked in — there's no
+"just refresh" shortcut; the binary must be rebuilt.
+
+```bash
+# Install air (once)
+go install github.com/air-verse/air@latest
+
+# Run from the dashboard directory (air reads .air.toml from cwd)
+cd dashboards/open-brain-dashboard-go
+air
+```
+
+The `.air.toml` in this directory is pre-configured: it calls `./build.sh
+build` as the build command, runs the binary with `serve --config
+open-brain-dashboard-go.toml`, and excludes generated `*_templ.go` files to
+prevent rebuild loops (templ generate creates `.go` files that air watches).
+
+**Gotchas:**
+- Run `air` from this directory, not from the repo root — otherwise air
+  watches the entire monorepo and chokes on unrelated directories.
+- `air` passes arguments to the binary via `args_bin` in `.air.toml`, not
+  as part of `bin`. If `bin` contains spaces (e.g.
+  `"./binary serve --config foo"`), air treats the whole string as a single
+  executable path and fails with "No such file or directory."
+- Kill air (`Ctrl-C` or `pkill air`) before doing manual builds — two
+  processes fighting over the same port will confuse both.
 
 ## Config
 

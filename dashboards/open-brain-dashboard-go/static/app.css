@@ -22,6 +22,17 @@ a:hover {
 	text-decoration: underline;
 }
 
+/* htmx indicator: hidden by default, shown during request.
+   htmx adds .htmx-request to the indicator element itself when
+   referenced via hx-indicator="#id". */
+.htmx-indicator {
+	opacity: 0;
+	transition: opacity 200ms ease-in;
+}
+.htmx-indicator.htmx-request {
+	opacity: 1;
+}
+
 /* --------------------------------------------------------------- header */
 
 .app-header {
@@ -1188,12 +1199,61 @@ a:hover {
    query is the whole phone story. */
 .app {
 	display: grid;
-	grid-template-columns: 18rem 1fr 4px var(--detail-width, 32rem);
-	grid-template-areas: "sidebar list handle detail";
+	grid-template-columns: 48px 18rem 1fr 4px var(--detail-width, 32rem);
+	grid-template-areas: "activity sidebar list handle detail";
 	min-height: 100vh;
 	background: var(--bg);
 	color: var(--fg);
 	font-family: var(--font-sans);
+}
+
+/* ---- Activity bar ---- */
+
+.activity-bar {
+	grid-area: activity;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	background: var(--bg);
+	border-right: 1px solid var(--border);
+	padding: var(--space-2) 0;
+}
+
+.activity-icons {
+	display: flex;
+	flex-direction: column;
+	gap: var(--space-1);
+}
+
+.activity-bottom {
+	margin-top: auto;
+	padding-bottom: var(--space-2);
+}
+
+.activity-icon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 40px;
+	height: 40px;
+	color: var(--fg-muted);
+	border: none;
+	background: none;
+	cursor: pointer;
+	border-left: 2px solid transparent;
+	text-decoration: none;
+	padding: 0;
+}
+.activity-icon svg {
+	width: 20px;
+	height: 20px;
+}
+.activity-icon:hover {
+	color: var(--fg);
+}
+.activity-icon--active {
+	color: var(--fg);
+	border-left-color: var(--accent);
 }
 
 .app .sidebar {
@@ -1240,6 +1300,7 @@ a:hover {
 		grid-template-columns: 1fr;
 		grid-template-areas: "list";
 	}
+	.activity-bar,
 	.app .sidebar,
 	.app .detail,
 	.app .resize-handle {
@@ -1490,8 +1551,9 @@ a:hover {
 	display: flex;
 	align-items: center;
 	gap: var(--space-2);
-	padding-bottom: var(--space-3);
+	padding-bottom: var(--space-2);
 	border-bottom: 1px solid var(--border-muted);
+	flex-wrap: wrap;
 }
 
 /* Pushes subsequent toolbar items to the right edge — used by the
@@ -1515,6 +1577,7 @@ a:hover {
 	cursor: pointer;
 	font-weight: 600;
 	display: inline-block;
+	font-size: 0.8rem;
 }
 .btn-primary:hover { filter: brightness(1.1); }
 
@@ -1525,6 +1588,7 @@ a:hover {
 	border-radius: var(--radius);
 	border: 1px solid var(--border);
 	cursor: pointer;
+	font-size: 0.8rem;
 }
 
 .btn-danger {
@@ -1534,26 +1598,35 @@ a:hover {
 	border-radius: var(--radius);
 	border: none;
 	cursor: pointer;
+	font-size: 0.8rem;
+}
+
+.btn-sm {
+	padding: var(--space-1) var(--space-3);
+	font-size: 0.75rem;
+	line-height: 1.4;
+	box-sizing: border-box;
 }
 
 .inline-form { display: inline; }
 
-.detail-header {
+.detail-meta-line {
 	display: flex;
 	align-items: center;
-	gap: var(--space-3);
-	flex-wrap: wrap;
+	gap: var(--space-2);
+	padding-bottom: var(--space-2);
 }
+
 .detail-time, .detail-edited {
 	color: var(--fg-muted);
-	font-size: 0.8rem;
+	font-size: 0.75rem;
 }
 .detail-edited { color: var(--warning); }
 .detail-id {
 	margin-left: auto;
 	color: var(--fg-subtle);
 	font-family: var(--font-mono);
-	font-size: 0.8rem;
+	font-size: 0.75rem;
 }
 
 .detail-content {
@@ -1702,6 +1775,30 @@ a:hover {
 	border-radius: var(--radius);
 	padding: var(--space-3) var(--space-4);
 	font-size: 0.9rem;
+}
+
+.compose-form .form-warning {
+	background: var(--bg);
+	border: 1px solid var(--warning);
+	color: var(--warning);
+	border-radius: var(--radius);
+	padding: var(--space-3) var(--space-4);
+	font-size: 0.9rem;
+}
+
+.compose-dialog--wide {
+	width: 40rem;
+}
+
+.coalesce-spinner {
+	font-size: 0.8rem;
+	color: var(--fg-muted);
+}
+
+.coalesce-error {
+	font-size: 0.8rem;
+	color: var(--danger);
+	display: none;
 }
 
 /* Modal mode — Task 10b adds the body. Keep the class here so the
