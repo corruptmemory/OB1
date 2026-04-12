@@ -385,7 +385,10 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 	}
 
 	content := strings.TrimSpace(r.FormValue("content"))
-	typ := strings.TrimSpace(r.FormValue("type"))
+	userType := strings.TrimSpace(r.FormValue("type"))
+	userTopics := parseCSVField(r.FormValue("topics"))
+	userPeople := parseCSVField(r.FormValue("people"))
+
 	if content == "" {
 		if isHTMX {
 			s.writeComposeDraftError(w, r, "content cannot be empty")
@@ -393,9 +396,6 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, "content cannot be empty", http.StatusBadRequest)
 		return
-	}
-	if typ == "" {
-		typ = "observation"
 	}
 
 	embedding, err := s.ollama.Embed(r.Context(), content)
@@ -408,12 +408,38 @@ func (s *Server) handleCapture(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// AI extraction: pull type, topics, people, action_items,
+	// dates_mentioned from the content text via Ollama chat. This
+	// mirrors the MCP server's OpenRouter extraction pipeline. The
+	// call is best-effort — Extract returns zero values on any
+	// failure, so user-entered fields are always the fallback.
+	extracted := s.ollama.Extract(r.Context(), content)
+
+	// Merge: user-entered values override AI extraction.
+	typ := userType
+	if typ == "" {
+		typ = extracted.Type
+	}
+	if typ == "" {
+		typ = "observation"
+	}
+	topics := userTopics
+	if len(topics) == 0 && len(extracted.Topics) > 0 {
+		topics = extracted.Topics
+	}
+	people := userPeople
+	if len(people) == 0 && len(extracted.People) > 0 {
+		people = extracted.People
+	}
+
 	id, err := s.db.CreateThought(r.Context(), CreateThoughtInput{
-		Content:   content,
-		Type:      typ,
-		Topics:    parseCSVField(r.FormValue("topics")),
-		People:    parseCSVField(r.FormValue("people")),
-		Embedding: embedding,
+		Content:        content,
+		Type:           typ,
+		Topics:         topics,
+		People:         people,
+		ActionItems:    extracted.ActionItems,
+		DatesMentioned: extracted.DatesMentioned,
+		Embedding:      embedding,
 	})
 	if err != nil {
 		if isHTMX {
@@ -706,6 +732,17 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "delete: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Trigger", "refresh-list")
+		w.Header().Set("HX-Push-Url", "/")
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := templates.DetailEmpty().Render(r.Context(), w); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 

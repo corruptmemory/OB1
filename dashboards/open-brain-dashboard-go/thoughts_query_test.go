@@ -41,10 +41,10 @@ func TestBuildListQuery(t *testing.T) {
 			wantArgLen: 3,
 		},
 		{
-			name:       "q with embedding uses pgvector distance",
+			name:       "q with embedding uses pgvector distance with threshold",
 			filters:    templates.ListFilters{Q: "deployment", Page: 1, PerPage: 50},
 			withVector: true,
-			wantSubstr: []string{"1 - (embedding <=> $1)", "ORDER BY embedding <=> $1", "embedding IS NOT NULL"},
+			wantSubstr: []string{"1 - (embedding <=> $1)", "ORDER BY embedding <=> $1", "embedding IS NOT NULL", ">= 0.5"},
 			// In semantic mode, Q is used by the caller to compute the
 			// embedding vector (prepended at $1) and is NOT added as a
 			// SQL arg by buildListQuery. The ILIKE branch only fires
@@ -90,6 +90,20 @@ func TestBuildCountQuery(t *testing.T) {
 	}
 	if len(args) != 2 {
 		t.Errorf("count args = %d, want 2", len(args))
+	}
+}
+
+func TestBuildCountQueryWithVector(t *testing.T) {
+	sql, args := buildCountQuery(templates.ListFilters{Type: "task"}, true)
+	if !strings.Contains(sql, ">= 0.5") {
+		t.Errorf("count query with vector should have similarity threshold, got:\n%s", sql)
+	}
+	if !strings.Contains(sql, "embedding <=> $1") {
+		t.Errorf("count query with vector should reference $1 for vector, got:\n%s", sql)
+	}
+	// $1 reserved for vector (caller prepends), $2 = type filter
+	if len(args) != 1 {
+		t.Errorf("count args = %d, want 1 (type filter only, vector prepended by caller)", len(args))
 	}
 }
 

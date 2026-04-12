@@ -80,7 +80,7 @@ func runServe(cmd ServeCmd) error {
 	}
 	defer db.Close()
 
-	ollama := NewOllamaClient(cfg.Ollama.URL, cfg.Ollama.EmbeddingModel)
+	ollama := NewOllamaClient(cfg.Ollama.URL, cfg.Ollama.EmbeddingModel, cfg.Ollama.ChatModel)
 	health := NewOllamaHealth(serverCtx)
 
 	srv := NewServer(db, ollama, health)

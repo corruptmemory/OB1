@@ -1,5 +1,7 @@
 // Ephemeral client state only. The URL is the UI state; anything that
 // describes "what's on the screen" belongs in the query string, not here.
+// Exception: layout preferences (theme, pane widths) live in localStorage
+// because they're display concerns, not navigation state.
 
 (function () {
 	"use strict";
@@ -17,6 +19,48 @@
 			localStorage.setItem("ob-theme", "light");
 		}
 	};
+
+	var saved = localStorage.getItem("ob-detail-width");
+	if (saved) {
+		document.querySelector(".app").style.setProperty("--detail-width", saved);
+	}
+})();
+
+// ---- resize handle between list and detail panes ----
+
+(function () {
+	"use strict";
+	var handle = document.getElementById("resize-handle");
+	var app = document.querySelector(".app");
+	if (!handle || !app) return;
+
+	var startX, startWidth;
+
+	handle.addEventListener("mousedown", function (e) {
+		e.preventDefault();
+		var detail = document.getElementById("detail-pane");
+		if (!detail) return;
+		startX = e.clientX;
+		startWidth = detail.offsetWidth;
+		handle.classList.add("resizing");
+		document.addEventListener("mousemove", onMove);
+		document.addEventListener("mouseup", onUp);
+	});
+
+	function onMove(e) {
+		var delta = startX - e.clientX;
+		var max = window.innerWidth * 0.6;
+		var w = Math.max(200, Math.min(max, startWidth + delta));
+		app.style.setProperty("--detail-width", w + "px");
+	}
+
+	function onUp() {
+		handle.classList.remove("resizing");
+		document.removeEventListener("mousemove", onMove);
+		document.removeEventListener("mouseup", onUp);
+		var w = getComputedStyle(app).getPropertyValue("--detail-width");
+		localStorage.setItem("ob-detail-width", w.trim());
+	}
 })();
 
 // ---- v1.5 compose dialog ----
@@ -115,6 +159,38 @@ document.body.addEventListener("cancel", function (e) {
 		e.preventDefault();
 	}
 });
+
+// ---- sidebar filter inputs ----
+// Client-side filter for topic/people lists. Prefix matches sort above
+// contains matches so typing "art" shows "Artix Linux" before
+// "learning-stuff." Items that don't match at all get hidden.
+
+window.obFilterList = function (input, listId) {
+	var q = input.value.toLowerCase();
+	var ul = document.getElementById(listId);
+	if (!ul) return;
+	var items = Array.from(ul.querySelectorAll("li"));
+
+	if (!q) {
+		items.forEach(function (li) {
+			li.style.display = "";
+			li.style.order = "";
+		});
+		return;
+	}
+
+	items.forEach(function (li) {
+		var label = li.querySelector(".filter-label");
+		var text = label ? label.textContent.toLowerCase() : "";
+		if (text.indexOf(q) === -1) {
+			li.style.display = "none";
+			li.style.order = "";
+		} else {
+			li.style.display = "";
+			li.style.order = text.indexOf(q) === 0 ? "0" : "1";
+		}
+	});
+};
 
 // ---- v1.5 bulk delete helpers ----
 

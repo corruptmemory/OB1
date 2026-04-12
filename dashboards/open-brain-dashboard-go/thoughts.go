@@ -42,13 +42,17 @@ func scanThoughtRow(row interface {
 // CreateThoughtInput is the set of fields the dashboard's quick-capture
 // form writes through to a new thoughts row. Embedding is always required
 // because capture always runs ollama.Embed before the DB write — there's
-// no "skip embedding" path on create.
+// no "skip embedding" path on create. ActionItems and DatesMentioned are
+// populated by the AI extraction step and may be nil when extraction fails
+// or the chat model isn't configured.
 type CreateThoughtInput struct {
-	Content   string
-	Type      string
-	Topics    []string
-	People    []string
-	Embedding []float32
+	Content        string
+	Type           string
+	Topics         []string
+	People         []string
+	ActionItems    []string
+	DatesMentioned []string
+	Embedding      []float32
 }
 
 // CreateThought inserts a new thoughts row and returns its id. Metadata
@@ -65,11 +69,21 @@ func (d *DB) CreateThought(ctx context.Context, in CreateThoughtInput) (int64, e
 	if people == nil {
 		people = []string{}
 	}
+	actionItems := in.ActionItems
+	if actionItems == nil {
+		actionItems = []string{}
+	}
+	datesMentioned := in.DatesMentioned
+	if datesMentioned == nil {
+		datesMentioned = []string{}
+	}
 	metadata := map[string]any{
-		"type":   in.Type,
-		"topics": topics,
-		"people": people,
-		"source": "dashboard",
+		"type":            in.Type,
+		"topics":          topics,
+		"people":          people,
+		"action_items":    actionItems,
+		"dates_mentioned": datesMentioned,
+		"source":          "dashboard",
 	}
 	metaJSON, err := json.Marshal(metadata)
 	if err != nil {
@@ -240,8 +254,15 @@ func (d *DB) listQuery(ctx context.Context, f templates.ListFilters, embedding [
 	withVector := embedding != nil
 
 	countSQL, countArgs := buildCountQuery(f, withVector)
+	var countFinalArgs []any
+	if withVector {
+		vec := pgvector.NewVector(embedding)
+		countFinalArgs = append([]any{vec}, countArgs...)
+	} else {
+		countFinalArgs = countArgs
+	}
 	var total int64
-	if err := d.pool.QueryRow(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+	if err := d.pool.QueryRow(ctx, countSQL, countFinalArgs...).Scan(&total); err != nil {
 		return nil, fmt.Errorf("list count (%d): %w", mode, err)
 	}
 
@@ -369,7 +390,7 @@ func (d *DB) SidebarCounts(ctx context.Context) (*SidebarCounts, error) {
 		WHERE jsonb_typeof(metadata->'topics') = 'array'
 		GROUP BY topic
 		ORDER BY n DESC, topic ASC
-		LIMIT 10
+		LIMIT 50
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("sidebar topics: %w", err)
@@ -389,7 +410,7 @@ func (d *DB) SidebarCounts(ctx context.Context) (*SidebarCounts, error) {
 		WHERE jsonb_typeof(metadata->'people') = 'array'
 		GROUP BY person
 		ORDER BY n DESC, person ASC
-		LIMIT 10
+		LIMIT 50
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("sidebar people: %w", err)

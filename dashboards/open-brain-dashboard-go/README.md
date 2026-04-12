@@ -39,20 +39,20 @@ so bookmarks and back/forward work.
 | Area | State | Purpose |
 |---|---|---|
 | Shell | **working** | CSS-grid three-pane layout (`sidebar` · `list` · `detail`) sized in `fr` + fixed widths. Mobile falls back to a single column below 1216 px. Dark is default; light palette ships alongside and toggles via the sidebar footer's theme button (localStorage-backed). |
-| Filter sidebar | **working** | Type chips with counts, time-window chips (All / 7d / 30d / 90d), top-10 topics, top-10 people. Clicking a chip pushes the filter into the URL, clicking an active chip clears it. Every anchor has a real `href` for progressive-enhancement — JS-off users still get filtered shell loads. |
-| List pane | **working** | Dense two-line rows (~50 per 1080p screen) with type chip, relative time, id, and truncated content. Row click loads the thought into the detail pane. Semantic search is one box at the top with automatic text-fallback when Ollama is unavailable or returns no matches. An Ollama health dot next to the search box reflects the last embed outcome (green / amber / grey). Pagination is bookmarkable. |
+| Filter sidebar | **working** | Type chips with counts, time-window chips (All / 7d / 30d / 90d), top-50 topics, top-50 people. Topics and people sections have client-side filter inputs (prefix matches sort above contains matches) and scroll independently when the list overflows. Clicking a chip pushes the filter into the URL, clicking an active chip clears it. Every anchor has a real `href` for progressive-enhancement — JS-off users still get filtered shell loads. |
+| List pane | **working** | Dense two-line rows (~50 per 1080p screen) with type chip, relevance score (when searching), relative time, id, and truncated content (`text-overflow: ellipsis`). Row click loads the thought into the detail pane. A draggable resize handle between list and detail panes persists widths to localStorage. Search is submit-on-Enter with a ⌕ button — semantic results are filtered by a 0.5 cosine similarity threshold so irrelevant matches don't appear. Automatic text-fallback when Ollama is unavailable or returns no matches. An Ollama health dot next to the search box reflects the last embed outcome (green / amber / grey). Pagination is bookmarkable. |
 | Detail pane: read | **working** | Full content, topic/person tags linked back to filter URLs, action items with priority chips, raw metadata disclosure, Edit and Delete buttons. Shows "captured X ago" and "edited X ago" when applicable. |
 | Detail pane: edit | **working** | Right-pane swap (not a modal): textarea + type select + CSV topics/people + dynamic action-item rows. Save POSTs to `/thought/{id}/edit`; on htmx the response is a fragment + `HX-Trigger: refresh-row-N` so the corresponding list row re-fetches itself. Cancel restores the read view. JS-off fallback is the same POST with 303-to-read. Ollama embed is recomputed only when content text changes. |
-| Compose panel | **working** | Gmail-style floating `<dialog>` sibling of the shell. Opens bottom-right in compact mode (non-blocking), can expand to modal (dimmed backdrop) and back. Minimize collapses to the title bar via `<details>`. Esc and backdrop-click both contract to compact — your draft survives anything except explicit close. Save clears the slot and fires `HX-Trigger: refresh-list, focus-thought-{id}` so the list refreshes and the new thought lands in the detail pane. Error path re-renders the panel with typed input preserved. |
+| Compose panel | **working** | Gmail-style floating `<dialog>` sibling of the shell. Opens bottom-right in compact mode (non-blocking), can expand to modal (dimmed backdrop) and back. Minimize collapses to the title bar via `<details>`. Esc and backdrop-click both contract to compact — your draft survives anything except explicit close. Save runs AI metadata extraction via Ollama chat (same prompt as the MCP server) to auto-populate type, topics, people, action_items, and dates_mentioned — user-entered form fields override AI results. Save clears the slot and fires `HX-Trigger: refresh-list, focus-thought-{id}` so the list refreshes and the new thought lands in the detail pane. Error path re-renders the panel with typed input preserved. |
 | Bulk delete | **working** | Row checkboxes with a three-state toolbar (normal / bulk / confirm) switched via CSS `:has()` — no client state tracking. Clicking Delete selected swaps to an inline confirm ("Delete N thoughts? This is permanent."); Yes, delete POSTs `ids[]` to `/bulk-delete` via `hx-include="#list-form"`. Deletion is immediate and permanent — no undo window. If the currently-open thought is in the deleted set, the response emits `HX-Trigger: clear-detail` and `HX-Push-Url` to strip `?id=` from the URL. |
 | Legacy redirects | **working** | v1.1 URLs (`/home`, `/browse?…`, `/search?q=…&mode=…`, `/thought/{id}`, GET `/thought/{id}/edit`) all 303-redirect into the new `/?…` shape. The `mode=` parameter is dropped silently — v1.5 has no mode toggle. POST `/thought/{id}/edit` and POST `/thought/{id}/delete` stay as write endpoints. |
 
 **v2 candidates** (not in v1.5): "select all matching" beyond the
 visible page, bulk re-embed, bulk tag/type edit, search operators
 (`"quoted"` substring), compose draft persistence, undo window,
-keyboard shortcuts, similarity threshold for the semantic/text
-fallback path, phone-specific layout refinements, numbered
-pagination with ellipsis elision.
+keyboard shortcuts, similarity threshold slider (currently baked at
+0.5), phone-specific layout refinements, numbered pagination with
+ellipsis elision.
 
 ## URL Surface
 
@@ -143,7 +143,12 @@ url = "postgres://openbrain:YOUR_PASSWORD@home-server:5432/openbrain?sslmode=dis
 [ollama]
 url = "http://home-server:11434"
 embedding_model = "mxbai-embed-large"
+chat_model = "qwen2.5:3b"
 ```
+
+`chat_model` enables AI metadata extraction on compose (type, topics,
+people, action_items, dates_mentioned). If omitted, extraction is
+silently skipped and the compose form relies on user-entered values only.
 
 Every value can be overridden via CLI flag — run
 `./open-brain-dashboard-go serve --help` for the full list. CLI flags take

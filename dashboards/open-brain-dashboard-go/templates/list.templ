@@ -18,7 +18,7 @@ templ List(ld ListData) {
 					hx-get="/partials/list"
 					hx-target="#list-pane"
 					hx-push-url="true"
-					hx-trigger="input changed delay:300ms, keyup[key=='Enter'], search"
+					hx-trigger="submit"
 					hx-include="[name=type],[name=topic],[name=person],[name=days]"
 				>
 					<input type="search" name="q" class="search-input"
@@ -26,6 +26,7 @@ templ List(ld ListData) {
 						placeholder="Search…"
 						autocomplete="off"
 					/>
+					<button type="submit" class="search-btn" title="Search">&#x2315;</button>
 					@hiddenFilters(ld.Result.Filter)
 				</form>
 				<span class={ "ollama-dot", "ollama-dot--" + ld.OllamaStatus }
@@ -122,13 +123,17 @@ templ listRow(t ThoughtData, selectedID int64, current ListFilters) {
 			<input type="checkbox" class="row-checkbox" name="ids" value={ fmt.Sprintf("%d", t.ID) }/>
 		</label>
 		<a class={ rowClass(t.ID, selectedID) }
-			href={ templ.SafeURL(fmt.Sprintf("/?%s&id=%d", filtersToURL(current), t.ID)) }
+			href={ templ.SafeURL(rowHref(current, t.ID)) }
 			hx-get={ fmt.Sprintf("/partials/detail/%d?%s", t.ID, filtersToURL(current)) }
 			hx-target="#detail-pane"
-			hx-push-url="true"
+			hx-swap="innerHTML"
+			hx-push-url={ rowHref(current, t.ID) }
 		>
 			<div class="row-line1">
 				<span class={ TypeClass(t.Type) }>{ t.Type }</span>
+				if t.Similarity > 0 {
+					<span class="row-score">{ fmt.Sprintf("%.0f%%", t.Similarity*100) }</span>
+				}
 				<span class="row-time">{ HumanTime(t.CreatedAt) }</span>
 				<span class="row-id">{ fmt.Sprintf("#%d", t.ID) }</span>
 			</div>

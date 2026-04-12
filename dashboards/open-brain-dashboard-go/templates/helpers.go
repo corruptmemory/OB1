@@ -120,6 +120,19 @@ func pageFilter(f ListFilters, page int) ListFilters {
 	return f
 }
 
+// rowHref builds the pretty shell URL for a list row: /?<filters>&id=N,
+// collapsing to /?id=N when the filter set is empty (so we never produce
+// a "/?&id=N" eyesore). Used by both the row's href and its
+// hx-push-url so the address bar tracks the shell route instead of the
+// /partials/detail/N endpoint htmx actually fetches.
+func rowHref(f ListFilters, id int64) string {
+	qs := filtersToURL(f)
+	if qs == "" {
+		return fmt.Sprintf("/?id=%d", id)
+	}
+	return fmt.Sprintf("/?%s&id=%d", qs, id)
+}
+
 // filtersToURL renders a ListFilters as a URL query string, skipping
 // zero values. Used by the sidebar chips and list-pane pagination to
 // construct navigation URLs that preserve sibling filters.

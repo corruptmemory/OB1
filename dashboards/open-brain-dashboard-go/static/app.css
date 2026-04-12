@@ -1188,8 +1188,8 @@ a:hover {
    query is the whole phone story. */
 .app {
 	display: grid;
-	grid-template-columns: 18rem 1fr 32rem;
-	grid-template-areas: "sidebar list detail";
+	grid-template-columns: 18rem 1fr 4px var(--detail-width, 32rem);
+	grid-template-areas: "sidebar list handle detail";
 	min-height: 100vh;
 	background: var(--bg);
 	color: var(--fg);
@@ -1207,7 +1207,6 @@ a:hover {
 .app .list {
 	grid-area: list;
 	min-width: 26rem;
-	border-right: 1px solid var(--border);
 	overflow-y: auto;
 }
 
@@ -1218,25 +1217,32 @@ a:hover {
 	overflow-y: auto;
 }
 
+.resize-handle {
+	grid-area: handle;
+	width: 4px;
+	cursor: col-resize;
+	background: var(--border);
+	transition: background 0.1s;
+}
+.resize-handle:hover,
+.resize-handle.resizing {
+	background: var(--accent);
+}
+
 .app .placeholder {
 	padding: var(--space-5);
 	color: var(--fg-muted);
 	font-style: italic;
 }
 
-/* Single-column fallback for small screens. Breakpoint matches the
-   desktop grid's minimum fit (18 + 26 + 32 = 76rem = 1216px); below
-   that we can't fit all three panes, so collapse to the list only.
-   Phone-specific refinement is deferred — later tasks can layer on
-   more nuanced behavior (show sidebar as drawer, detail as bottom
-   sheet) against this baseline. */
 @media (max-width: 1216px) {
 	.app {
 		grid-template-columns: 1fr;
 		grid-template-areas: "list";
 	}
 	.app .sidebar,
-	.app .detail {
+	.app .detail,
+	.app .resize-handle {
 		display: none;
 	}
 }
@@ -1270,8 +1276,8 @@ a:hover {
 	font-weight: 600;
 }
 
-.chip-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--space-1); }
-.chip-list--row { flex-direction: row; flex-wrap: wrap; }
+.chip-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--space-1); max-height: 14rem; overflow-y: auto; }
+.chip-list--row { flex-direction: row; flex-wrap: wrap; max-height: none; overflow-y: visible; }
 
 .chip {
 	display: inline-flex;
@@ -1292,6 +1298,19 @@ a:hover {
 .chip-count { color: var(--fg-subtle); font-variant-numeric: tabular-nums; font-size: 0.75rem; }
 
 .filter-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; }
+.filter-list--scroll { max-height: 14rem; overflow-y: auto; }
+.sidebar-filter-input {
+	width: 100%;
+	padding: var(--space-1) var(--space-2);
+	margin-bottom: var(--space-2);
+	background: var(--bg-raised);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	color: var(--fg);
+	font-size: 0.8rem;
+	font-family: var(--font-sans);
+}
+.sidebar-filter-input:focus { outline: none; border-color: var(--accent); }
 .filter-row {
 	display: flex;
 	justify-content: space-between;
@@ -1333,9 +1352,10 @@ a:hover {
 	border-bottom: 1px solid var(--border);
 	background: var(--bg-elevated);
 }
-.search-form { flex: 1; min-width: 0; }
+.search-form { flex: 1; min-width: 0; display: flex; gap: var(--space-2); }
 .search-input {
-	width: 100%;
+	flex: 1;
+	min-width: 0;
 	padding: var(--space-2) var(--space-3);
 	background: var(--bg-raised);
 	border: 1px solid var(--border);
@@ -1345,6 +1365,17 @@ a:hover {
 	font-size: 0.9rem;
 }
 .search-input:focus { outline: none; border-color: var(--accent); }
+.search-btn {
+	background: var(--bg-raised);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	color: var(--fg-muted);
+	padding: 0 var(--space-3);
+	cursor: pointer;
+	font-size: 1rem;
+	line-height: 1;
+}
+.search-btn:hover { color: var(--fg); border-color: var(--accent); }
 
 .ollama-dot {
 	display: inline-block;
@@ -1400,6 +1431,12 @@ a:hover {
 	align-items: center;
 	gap: var(--space-2);
 	margin-bottom: var(--space-1);
+	min-width: 0;
+}
+.row-score {
+	font-size: 0.7rem;
+	color: var(--accent);
+	font-family: var(--font-mono);
 }
 .row-time { font-size: 0.75rem; color: var(--fg-muted); }
 .row-id {
@@ -1747,6 +1784,7 @@ a:hover {
 }
 .list-row-wrapper > .list-row {
 	flex: 1;
+	min-width: 0;
 	border-bottom: none; /* wrapper now owns the separator */
 }
 

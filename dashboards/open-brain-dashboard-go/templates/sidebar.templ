@@ -42,7 +42,9 @@ templ Sidebar(sd SidebarData) {
 		if len(sd.Topics) > 0 {
 			<section class="filter-section">
 				<h3 class="filter-heading">Topics</h3>
-				<ul class="filter-list">
+				<input type="text" class="sidebar-filter-input" placeholder="Filter topics…"
+					oninput="obFilterList(this, 'topics-list')" autocomplete="off"/>
+				<ul class="filter-list filter-list--scroll" id="topics-list">
 					for _, tc := range sd.Topics {
 						@topicRow(tc.Topic, tc.Count, sd.Active)
 					}
@@ -52,7 +54,9 @@ templ Sidebar(sd SidebarData) {
 		if len(sd.People) > 0 {
 			<section class="filter-section">
 				<h3 class="filter-heading">People</h3>
-				<ul class="filter-list">
+				<input type="text" class="sidebar-filter-input" placeholder="Filter people…"
+					oninput="obFilterList(this, 'people-list')" autocomplete="off"/>
+				<ul class="filter-list filter-list--scroll" id="people-list">
 					for _, pc := range sd.People {
 						@personRow(pc.Person, pc.Count, sd.Active)
 					}

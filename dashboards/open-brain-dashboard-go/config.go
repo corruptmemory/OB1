@@ -24,6 +24,7 @@ type DatabaseConfig struct {
 type OllamaConfig struct {
 	URL            string `toml:"url"`
 	EmbeddingModel string `toml:"embedding_model"`
+	ChatModel      string `toml:"chat_model"`
 }
 
 func DefaultConfig() *Config {
@@ -37,6 +38,7 @@ func DefaultConfig() *Config {
 		Ollama: OllamaConfig{
 			URL:            "http://home-server:11434",
 			EmbeddingModel: "mxbai-embed-large",
+			ChatModel:      "qwen2.5:3b",
 		},
 	}
 }

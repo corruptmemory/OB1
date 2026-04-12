@@ -27,6 +27,13 @@ import (
 // be well-formed but the similarity score will be meaningless. Search()
 // (in thoughts.go, Task 4+) is the sole caller and enforces the Q!=""
 // precondition.
+// similarityThreshold is the minimum cosine similarity (1 - distance)
+// for a thought to appear in semantic search results. Below this the
+// result is noise — "wolverine" shouldn't return thoughts about Go
+// build conventions just because pgvector always returns something.
+// Tune this if searches feel too narrow (lower) or too noisy (raise).
+const similarityThreshold = 0.5
+
 func buildListQuery(f templates.ListFilters, withVector bool) (string, []any) {
 	var b strings.Builder
 	args := []any{}
@@ -44,7 +51,7 @@ func buildListQuery(f templates.ListFilters, withVector bool) (string, []any) {
 	if withVector {
 		fmt.Fprintf(&b, `SELECT id, content, metadata, created_at, 1 - (embedding <=> $%d) AS similarity
 FROM thoughts
-WHERE embedding IS NOT NULL`, vectorPlaceholder)
+WHERE embedding IS NOT NULL AND 1 - (embedding <=> $%d) >= %g`, vectorPlaceholder, vectorPlaceholder, similarityThreshold)
 	} else {
 		b.WriteString(`SELECT id, content, metadata, created_at
 FROM thoughts
@@ -97,11 +104,10 @@ WHERE 1=1`)
 // buildCountQuery mirrors buildListQuery's WHERE clause but returns
 // count(*) and omits ORDER/LIMIT/OFFSET. Used for pagination total.
 //
-// buildCountQuery doesn't need the vector in semantic mode — the count
-// of "rows eligible for ranking" is just the count of rows with a
-// non-null embedding matched against the other filters, and similarity
-// isn't a WHERE clause. If a similarity threshold is ever introduced
-// in buildListQuery, the count here will need to match.
+// When withVector is true, $1 is reserved for the embedding vector
+// (same contract as buildListQuery) so the similarity threshold
+// filter matches. The caller must prepend the vector to the returned
+// args, just like it does for buildListQuery.
 func buildCountQuery(f templates.ListFilters, withVector bool) (string, []any) {
 	var b strings.Builder
 	args := []any{}
@@ -109,7 +115,8 @@ func buildCountQuery(f templates.ListFilters, withVector bool) (string, []any) {
 	next := func() int { n++; return n }
 
 	if withVector {
-		b.WriteString("SELECT count(*) FROM thoughts WHERE embedding IS NOT NULL")
+		p := next() // reserve $1 for vector
+		fmt.Fprintf(&b, "SELECT count(*) FROM thoughts WHERE embedding IS NOT NULL AND 1 - (embedding <=> $%d) >= %g", p, similarityThreshold)
 	} else {
 		b.WriteString("SELECT count(*) FROM thoughts WHERE 1=1")
 	}
