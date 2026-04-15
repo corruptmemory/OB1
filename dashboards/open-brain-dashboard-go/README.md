@@ -9,25 +9,28 @@ Intended to pair with [`integrations/docker-compose-deployment/`](../../integrat
 
 ## Status
 
-**v1.5 complete.** The dashboard is a three-pane master/detail shell
+**v2.0 complete.** The dashboard is a three-pane master/detail shell
 (Gmail-style) at `/`, driven entirely by URL query parameters. The
 v1.1 flat pages (home / browse / search / detail) are gone — their
 URLs redirect into the unified `/?…` shape so bookmarks keep working.
 All CRUD is wired end-to-end against the live Open Brain database,
-plus a single bulk-ops lane (bulk delete) so the capability is
-proven rather than scaffolded.
+plus bulk delete and coalesce.
+
+**v2.0 adds a fully integrated Go MCP server** — same binary, same
+DB pool, same Ollama client. The `system` subcommand runs both the
+dashboard HTTP server and the MCP server concurrently. The Deno/Docker
+MCP container is retired; this binary takes over port 8000 directly.
+Seven tools: `capture_thought`, `search_thoughts`, `list_thoughts`,
+`thought_stats`, `delete_thought`, `find_similar_thoughts`, `coalesce_thoughts`.
+
+Deployed to node-0 as a single systemd unit (`open-brain.service`)
+under `/home/open-brain/bin/`. Dashboard on port 8082 fronted by
+`open-brain-dashboard:80` in Caddy; MCP on port 8000 fronted by
+`open-brain:80`.
 
 See `docs/plans/2026-04-11-dashboard-v1.5-master-detail-design.md`
-for the full design rationale and `CLAUDE.md` in this directory for
+for the v1.5 design rationale and `CLAUDE.md` in this directory for
 the binding design principles.
-
-**Next resume point:** deploy the binary to node-0 as a plain
-systemd unit under `/opt/open-brain-dashboard-go/` (mirroring the
-existing `/opt/weather-station/` pattern), fronted by a Caddy route
-at `http://open-brain-ui/` (or similar). See "Deployment Modes"
-below for the target layout. Thanks to `//go:embed static`, the
-binary is genuinely self-contained — no Docker required, no volume
-mounts, no image builds.
 
 ## What It Does
 
@@ -116,25 +119,38 @@ index on `metadata->'topics'` for array containment.
   `go install github.com/a-h/templ/cmd/templ@latest`
 - `curl` (used once by `build.sh` to vendor `htmx.min.js`)
 
+## Subcommands
+
+| Subcommand | What it runs |
+|---|---|
+| `serve` | Dashboard HTTP server only (port 8082 by default) |
+| `mcp` | MCP server only (port 8001 by default) |
+| `system` | Both servers concurrently — this is the production mode |
+| `gen-config` | Write a default TOML config to disk and exit |
+
 ## Quick Start
 
 ```bash
 cd dashboards/open-brain-dashboard-go
 
-# Generate a default config, then edit the database URL + Ollama URL to
-# point at your stack:
+# Generate a default config, then edit the database URL + Ollama URL:
 ./build.sh build
 ./open-brain-dashboard-go gen-config
 
-# Edit open-brain-dashboard-go.toml — set database.url and ollama.url
+# Edit the config — at minimum set database.url and ollama.url
 $EDITOR open-brain-dashboard-go.toml
 
-# Run it
+# Dashboard only:
 ./open-brain-dashboard-go serve --config open-brain-dashboard-go.toml
-# → listening on http://127.0.0.1:8080
+
+# MCP server only:
+./open-brain-dashboard-go mcp --config open-brain-dashboard-go.toml
+
+# Both (production mode):
+./open-brain-dashboard-go system --config open-brain-dashboard-go.toml
 ```
 
-Or use `./build.sh run` to build and launch in one step.
+Or use `./build.sh run` to build and launch the dashboard in one step.
 
 ## Live Reload (Dev)
 
@@ -172,7 +188,7 @@ prevent rebuild loops (templ generate creates `.go` files that air watches).
 
 ```toml
 [server]
-listen = "127.0.0.1:8080"
+listen = "127.0.0.1:8082"
 
 [database]
 url = "postgres://openbrain:YOUR_PASSWORD@home-server:5432/openbrain?sslmode=disable"
@@ -181,16 +197,22 @@ url = "postgres://openbrain:YOUR_PASSWORD@home-server:5432/openbrain?sslmode=dis
 url = "http://home-server:11434"
 embedding_model = "mxbai-embed-large"
 chat_model = "qwen2.5:3b"
+
+[mcp]
+listen = "127.0.0.1:8001"
+access_key = ""   # leave empty to disable auth; set to a random hex string in production
 ```
 
-`chat_model` enables AI metadata extraction on compose (type, topics,
-people, action_items, dates_mentioned). If omitted, extraction is
-silently skipped and the compose form relies on user-entered values only.
+`chat_model` enables AI metadata extraction on compose and MCP capture
+(type, topics, people, action_items, dates_mentioned) plus Ollama-powered
+synthesis during coalesce. If omitted, extraction is silently skipped.
+
+`mcp.access_key` is checked against the `x-brain-key` request header (or
+`?key=` query param for clients that can't set headers). Leave blank during
+local dev; set to the same key your AI clients send in production.
 
 Every value can be overridden via CLI flag — run
-`./open-brain-dashboard-go serve --help` for the full list. CLI flags take
-precedence over config file values so you can keep a single config checked
-in and override just the listen address when running multiple instances.
+`./open-brain-dashboard-go serve --help` for the full list.
 
 ## Deployment Modes
 
@@ -204,59 +226,63 @@ service).
 **Prod (node-0):** the binary ships as a single self-contained
 executable with every static asset embedded via `//go:embed static`,
 so deployment is a plain systemd unit — no Docker ceremony required.
-This matches the existing `/opt/weather-station/` pattern on node-0.
-Rough shape:
+
+Actual deployed layout:
 
 ```
-/opt/open-brain-dashboard-go/
-  open-brain-dashboard-go          # scp'd from a desktop build
-  open-brain-dashboard-go.toml     # db/ollama URLs → 127.0.0.1 loopback
+/home/open-brain/bin/
+  open-brain-dashboard-go          # scp'd from a desktop cross-compile
+  config.toml                      # db/ollama/mcp URLs → 127.0.0.1 loopback
 ```
 
 ```ini
-# /etc/systemd/system/open-brain-dashboard-go.service
+# /etc/systemd/system/open-brain.service
 [Unit]
-Description=Open Brain Dashboard (Go)
-After=network-online.target docker.service
-Wants=network-online.target
+Description=Open Brain (dashboard + MCP server)
+After=network.target docker.service
+Wants=docker.service
 
 [Service]
 Type=simple
-User=open-brain
-WorkingDirectory=/opt/open-brain-dashboard-go
-ExecStart=/opt/open-brain-dashboard-go/open-brain-dashboard-go serve --config /opt/open-brain-dashboard-go/open-brain-dashboard-go.toml
+User=jim
+WorkingDirectory=/home/open-brain/bin
+ExecStart=/home/open-brain/bin/open-brain-dashboard-go system --config /home/open-brain/bin/config.toml
 Restart=on-failure
-RestartSec=5
+RestartSec=5s
+SyslogIdentifier=open-brain
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Plus a Caddy route on node-0 fronting `http://open-brain-ui/` (or
-similar hostname) to the dashboard's listen port, alongside the
-existing routes for `open-brain`, `home-photos`, `home-server`, and
-`weather-station`. The dashboard's config points `database.url` and
-`ollama.url` at `127.0.0.1` because the open-brain docker-compose
-stack already exposes Postgres on `5432` and Ollama on `11434` on
-loopback — no container network gymnastics needed.
+Caddy routes on node-0:
+- `open-brain:80` → `localhost:8000` (MCP, replaces the old Deno container)
+- `open-brain-dashboard:80` → `localhost:8082` (dashboard)
 
-Updates are `scp` the new binary, `systemctl restart
-open-brain-dashboard-go`. No image builds, no registry, no volume
-mounts.
+The config points `database.url` and `ollama.url` at `127.0.0.1`
+because the open-brain docker-compose stack exposes Postgres on `5432`
+and Ollama on `11434` on loopback. Only the MCP and dashboard containers
+are retired — the DB and Ollama containers keep running.
+
+Updates: cross-compile on desktop, `scp` to `/tmp/`, `systemctl stop
+open-brain`, `cp /tmp/binary /home/open-brain/bin/`, `systemctl start
+open-brain`. No image builds, no registry, no volume mounts.
 
 ## Layout
 
 ```
-main.go               # go-flags entry point, serve + gen-config subcommands
-config.go             # TOML config types + Load/Write/Default helpers
+main.go               # go-flags entry point: serve / mcp / system / gen-config
+config.go             # TOML config types + Load/Write/Default helpers (server, db, ollama, mcp)
 db.go                 # pgx connection pool setup
-ollama.go             # OpenAI-compatible /v1/embeddings client
-server.go             # chi router + handler dispatch + static file mount
-templates/
-  layout.templ        # minimal base (head + body slot, no header baked in)
-  home.templ          # placeholder Home page
+ollama.go             # Embed (with truncateForEmbed guard), Extract, Synthesize
+thoughts.go           # DB methods: Create, Update, Delete, Search, BulkDelete,
+                      #   CoalesceThoughts, FetchContents, FindSimilar, SidebarCounts, ThoughtByID
+thoughts_query.go     # SQL builders for list/count/bulk-delete queries
+server.go             # chi router + all dashboard HTTP handlers
+mcp.go                # MCP server: 7 tools via mark3labs/mcp-go, auth + CORS middleware
+templates/            # templ components (.templ source; *_templ.go are generated)
 static/
-  tokens.css          # design tokens (dark theme)
+  tokens.css          # design tokens (dark + light palettes)
   app.css             # component styles
   vendor/htmx.min.js  # vendored by build.sh (gitignored)
 build.sh              # templ generate + go build wrapper (always use this)

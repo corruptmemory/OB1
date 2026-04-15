@@ -11,6 +11,12 @@ type Config struct {
 	Server   ServerConfig   `toml:"server"`
 	Database DatabaseConfig `toml:"database"`
 	Ollama   OllamaConfig   `toml:"ollama"`
+	MCP      MCPConfig      `toml:"mcp"`
+}
+
+type MCPConfig struct {
+	Listen    string `toml:"listen"`
+	AccessKey string `toml:"access_key"`
 }
 
 type ServerConfig struct {
@@ -30,7 +36,7 @@ type OllamaConfig struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
-			Listen: "127.0.0.1:8080",
+			Listen: "127.0.0.1:8082",
 		},
 		Database: DatabaseConfig{
 			URL: "postgres://openbrain:CHANGE_ME@home-server:5432/openbrain?sslmode=disable",
@@ -39,6 +45,10 @@ func DefaultConfig() *Config {
 			URL:            "http://home-server:11434",
 			EmbeddingModel: "mxbai-embed-large",
 			ChatModel:      "qwen2.5:3b",
+		},
+		MCP: MCPConfig{
+			Listen:    "127.0.0.1:8001",
+			AccessKey: "",
 		},
 	}
 }

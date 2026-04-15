@@ -45,7 +45,9 @@ func scanThoughtRow(row interface {
 // because capture always runs ollama.Embed before the DB write — there's
 // no "skip embedding" path on create. ActionItems and DatesMentioned are
 // populated by the AI extraction step and may be nil when extraction fails
-// or the chat model isn't configured.
+// or the chat model isn't configured. Source distinguishes how the thought
+// was captured ("dashboard", "mcp", "dashboard-coalesce", etc.); defaults
+// to "dashboard" when empty.
 type CreateThoughtInput struct {
 	Content        string
 	Type           string
@@ -54,6 +56,7 @@ type CreateThoughtInput struct {
 	ActionItems    []string
 	DatesMentioned []string
 	Embedding      []float32
+	Source         string
 }
 
 // CreateThought inserts a new thoughts row and returns its id. Metadata
@@ -78,13 +81,17 @@ func (d *DB) CreateThought(ctx context.Context, in CreateThoughtInput) (int64, e
 	if datesMentioned == nil {
 		datesMentioned = []string{}
 	}
+	source := in.Source
+	if source == "" {
+		source = "dashboard"
+	}
 	metadata := map[string]any{
 		"type":            in.Type,
 		"topics":          topics,
 		"people":          people,
 		"action_items":    actionItems,
 		"dates_mentioned": datesMentioned,
-		"source":          "dashboard",
+		"source":          source,
 	}
 	metaJSON, err := json.Marshal(metadata)
 	if err != nil {
@@ -373,13 +380,17 @@ func (d *DB) CoalesceThoughts(ctx context.Context, in CreateThoughtInput, delete
 	if datesMentioned == nil {
 		datesMentioned = []string{}
 	}
+	coalesceSource := in.Source
+	if coalesceSource == "" {
+		coalesceSource = "dashboard-coalesce"
+	}
 	metadata := map[string]any{
 		"type":            in.Type,
 		"topics":          topics,
 		"people":          people,
 		"action_items":    actionItems,
 		"dates_mentioned": datesMentioned,
-		"source":          "dashboard-coalesce",
+		"source":          coalesceSource,
 	}
 	metaJSON, err := json.Marshal(metadata)
 	if err != nil {
@@ -444,6 +455,72 @@ func (d *DB) FetchContents(ctx context.Context, ids []int64) ([]string, error) {
 		contents = append(contents, c)
 	}
 	return contents, rows.Err()
+}
+
+// SimilarThought is the per-row result of FindSimilar: the key fields
+// an MCP client needs to evaluate whether two thoughts should be coalesced.
+type SimilarThought struct {
+	ID         int64     `json:"id"`
+	Content    string    `json:"content"`
+	Type       string    `json:"type"`
+	Topics     []string  `json:"topics"`
+	Similarity float64   `json:"similarity"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// FindSimilar fetches the stored embedding for thought id, then returns
+// the nearest limit thoughts (excluding id itself) ranked by cosine
+// similarity. Returns an error when id has no embedding.
+func (d *DB) FindSimilar(ctx context.Context, id int64, limit int) ([]SimilarThought, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	var vec pgvector.Vector
+	if err := d.pool.QueryRow(ctx,
+		`SELECT embedding FROM thoughts WHERE id = $1`, id,
+	).Scan(&vec); err != nil {
+		return nil, fmt.Errorf("fetch source embedding for %d: %w", id, err)
+	}
+	if len(vec.Slice()) == 0 {
+		return nil, fmt.Errorf("thought %d has no embedding", id)
+	}
+
+	rows, err := d.pool.Query(ctx, `
+		SELECT id, content, metadata, created_at,
+		       1 - (embedding <=> $1) AS similarity
+		FROM thoughts
+		WHERE id != $2 AND embedding IS NOT NULL
+		ORDER BY embedding <=> $1
+		LIMIT $3
+	`, vec, id, limit)
+	if err != nil {
+		return nil, fmt.Errorf("find similar query: %w", err)
+	}
+	defer rows.Close()
+
+	var results []SimilarThought
+	for rows.Next() {
+		var (
+			t    SimilarThought
+			meta []byte
+		)
+		if err := rows.Scan(&t.ID, &t.Content, &meta, &t.CreatedAt, &t.Similarity); err != nil {
+			return nil, fmt.Errorf("scan similar row: %w", err)
+		}
+		var m struct {
+			Type   string   `json:"type"`
+			Topics []string `json:"topics"`
+		}
+		_ = json.Unmarshal(meta, &m)
+		if m.Type == "" {
+			m.Type = "unknown"
+		}
+		t.Type = m.Type
+		t.Topics = m.Topics
+		results = append(results, t)
+	}
+	return results, rows.Err()
 }
 
 // SidebarCounts is the one query set that powers the filter rail:

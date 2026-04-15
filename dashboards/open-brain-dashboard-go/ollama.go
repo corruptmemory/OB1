@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -39,8 +40,30 @@ type embedResponse struct {
 	} `json:"data"`
 }
 
-// Embed turns a single input string into an embedding vector.
+// embedMaxBytes is the maximum byte length sent to the embedding model.
+// mxbai-embed-large supports ~512 tokens; at ~4 bytes/token that is ~2048
+// bytes of headroom. We cap at 1800 to leave a safe margin for multi-byte
+// characters and subword tokenisation overhead.
+const embedMaxBytes = 1800
+
+// truncateForEmbed trims s to at most embedMaxBytes bytes, cutting at the
+// last ASCII space before the limit to avoid splitting a word mid-token.
+// Falls back to a hard cut if no space is found in the final 200-byte window.
+func truncateForEmbed(s string) string {
+	if len(s) <= embedMaxBytes {
+		return s
+	}
+	if cut := strings.LastIndexByte(s[:embedMaxBytes], ' '); cut >= embedMaxBytes-200 {
+		return s[:cut]
+	}
+	return s[:embedMaxBytes]
+}
+
+// Embed turns a single input string into an embedding vector. Inputs longer
+// than embedMaxBytes are truncated before the request so Ollama never returns
+// a context-length error.
 func (c *OllamaClient) Embed(ctx context.Context, input string) ([]float32, error) {
+	input = truncateForEmbed(input)
 	payload, err := json.Marshal(embedRequest{Model: c.model, Input: input})
 	if err != nil {
 		return nil, err
